@@ -1,0 +1,17 @@
+name: "finefs"
+data_dir: "./data/FineFS_5s/3_final"
+
+# FineFS 專屬邏輯
+mode: "rotation"           # 選項: full_name / rotation / combo_vs_solo
+joints: 24                 
+filter_single_rotation: false
+random_face: true
+max_len: 90
+
+# 預測視窗 (FineFS 偏好)
+input_n: 30
+output_n: 40
+
+# 採樣設定
+skip_rate: 5
+val_skip_rate: 5

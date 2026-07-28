@@ -1,0 +1,91 @@
+defaults:
+  - dataset: h36m
+  - _self_
+
+sft_dir: "" # 必須由命令列提供，例如 python train_rl.py sft_dir=outputs/sft_h36m_YYYY-MM-DD_HH-MM
+sft_ckpt: null # 可以指定特定的 SFT Checkpoint 檔名或模糊比對子字串 (如 sft_ckpt="epoch=50")
+
+quick_test: false
+
+# 覆蓋 SFT 階段的訓練參數
+training:
+  lr: 5e-6
+  epochs: 50
+  batch_size: 2
+  batch_size_test: 1
+  valid_epoch_interval: 1
+  grad_clip: 1.0
+  save_top_k: -1
+  val_check_interval: 30
+  log_every_n_steps: 10
+  limit_val_batches: 5
+
+# RL 專屬設定 (H36M)
+rl:
+  lr_schedule:
+    type: step
+    step_size: 5000
+    gamma: 0.5
+  ppo_epochs: 2
+  epsilon: 0.2
+  kl_coef: 0.05
+  kl_clip_value: 0.2
+  num_samples_per_prompt: 16
+  sampling_std: 1.0
+  
+  # H36M Reward 權重：只用 GT + Smooth（無花滑評分模型）
+  w_gt: 0.8
+  w_smooth: 0.2
+  w_score: 0.0
+  fs_reward_ckpt: null
+  
+  smooth_floor: 0.0
+  smooth_floor_penalty: 0.0
+  
+  # Reference Update
+  update_ref_every_epoch: 2
+  ref_ema_alpha: 0.5
+  
+  # Delayed Sub-Trajectory (連續/離散混合採樣機制)
+  delayed_sub_trajectory:
+    enabled: true
+    sampling_mode: discrete
+    window_size: 5
+    num_discrete_steps: 5
+
+  # Ablation Study switches
+  ablation:
+    advantage_clamp:
+      enabled: false
+      min_std: 1e-4
+      clamp_val: 3.0
+    adaptive_kl:
+      enabled: false
+      target_kl: 0.05
+      kl_min: 0.001
+      kl_max: 0.5
+    noise_annealing:
+      enabled: false
+      start_std: 0.02
+      min_std: 0.005
+      decay_rate: 0.95
+    step_decay_advantage:
+      enabled: false
+      power: 1.0
+    topk_gating:
+      enabled: false
+      ratio: 0.5
+
+# PyTorch Lightning 系統設定
+system:
+  accelerator: "gpu"
+  devices: [0, 1]
+  strategy: "ddp_find_unused_parameters_true"
+  precision: "32-true"
+  seed: 42
+
+exp_name: "rl"
+
+hydra:
+  run:
+    dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}

@@ -1,0 +1,18 @@
+# ReasonMotion 評估超參數與開關設定檔 (configs/eval.yaml)
+
+# 實驗輸出目錄路徑 (例: outputs/rl_finefs_2026-07-15_15-08)
+exp_dir: "outputs/rl_finefs_experiment"
+# 載入特定 Checkpoint 設定 (-1 代表自動選擇最新)
+epoch: -1              # 1-based epoch (例如 10)
+step: 10620               # RL 步數 step (例如 3900)
+ckpt: ""               # 直接指定特定 .ckpt 檔案路徑 (優先權高於 epoch/step)
+
+# 評估執行超參數
+batch_size: 64         # 評估 Batch Size
+nsample: 5             # 每個 Prompt 生成的 Sample 數量 (Best-of-N)
+device: "1"         # 執行裝置 (例: "cuda", "cuda:0", "0", "cpu")
+quick: false           # 快速測試模式 (僅評估 1% 資料)
+
+# 輸出結果儲存設定
+save_dir: ""           # 自訂結果儲存目錄 (預設為 <exp_dir>/eval)
+no_save: false         # 若為 true，則不儲存評估結果 log/json 到硬碟

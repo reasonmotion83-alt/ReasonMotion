@@ -1,0 +1,29 @@
+name: "flow_matching"
+
+# 1. 核心文字注入策略
+text_encoder: "sentence-transformer"
+textemb_dim: 384
+text_mode: "adaln"  # AdaLN 在 Flow Matching 中效果極佳 (類似 DiT 架構)
+
+# 2. Flow Matching 生成模型架構
+diffusion:
+  channels: 64
+  layers: 12
+  nheads: 8
+  diffusion_embedding_dim: 128
+  timeemb_dim: 128
+  featureemb_dim: 16
+  
+  # === Flow Matching 專屬設定 ===
+  num_steps: 10             # ODE 積分步數 (Flow Matching 直線特性，10~20 步即可達到極高質量)
+  # [註]: 移除了 beta_start, beta_end, schedule，因為 Flow Matching 不依賴變異數排程表
+  
+  is_unconditional: 0
+
+# 3. MoE 輔助實驗
+moe:
+  enabled: false
+  multirouter: false
+  use_r3: false
+  balance_loss: false
+  balance_loss_weight: 0.01

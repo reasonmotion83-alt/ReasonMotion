@@ -1,0 +1,17 @@
+name: "boxing"
+data_dir: "./data/boxing"
+
+
+# Boxing 專屬邏輯
+joints: 25                 # Body25 關節 25*3 = 75
+random_face: true
+
+# 預測視窗 (1s input -> 1s output @ 60fps)
+input_n: 30
+output_n: 30
+
+# 採樣設定
+skip_rate: 10
+val_skip_rate: 10
+neutral_ratio: 0.25
+

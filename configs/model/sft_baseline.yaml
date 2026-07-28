@@ -1,0 +1,35 @@
+name: "sft_baseline"
+
+# 1. 核心文字注入策略 (保留最關鍵的實驗)
+text_encoder: "sentence-transformer"
+textemb_dim: 384
+# 文字注入模式 (text_mode) 支援的選項：
+# - cross_attn: 原版作法。將 (K*L) 空間與時間完全攤平成超長序列去與文字做全局 Attention，計算量最大。
+# - decoupled_cross_attn: 解耦作法。只在 forward_time 的階段讓時間軸 (L) 去對齊文字，運算速度快且符合動作描述的時間特性。
+# - adaln: Adaptive LayerNorm (類似 Sora / DiT)。利用文字全局特徵直接進行 scale/shift，無 Attention 運算，收斂最快、CFG 訊號穿透最強。
+# - token: (保留舊版選項) 直接當作特徵 token 參與拼接運算。
+text_mode: "adaln"
+
+# 2. 擴散模型基礎架構
+diffusion:
+  channels: 64
+  layers: 12
+  nheads: 8
+  diffusion_embedding_dim: 128
+  timeemb_dim: 128
+  featureemb_dim: 16
+  beta_start: 0.0001
+  beta_end: 0.5
+  num_steps: 50
+  schedule: "cosine"
+  is_unconditional: 0
+
+# 3. MoE 輔助實驗 (SFT 預設全關，保持純淨 baseline)
+moe:
+  enabled: false
+  multirouter: false
+  use_r3: false
+  balance_loss: false
+  balance_loss_weight: 0.01
+
+# 註：已移除原始 codebase 中未使用到的幽靈參數 (如 decouple_spatial_temporal, use_rot_loss 等)

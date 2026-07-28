@@ -1,0 +1,90 @@
+defaults:
+  - dataset: boxing
+  - _self_
+
+sft_dir: "" # 必須由命令列提供，例如 python train_rl.py --config-name=train_rl_boxing sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
+sft_ckpt: null
+
+quick_test: false
+
+# 覆蓋 SFT 階段的訓練參數
+training:
+  lr: 5e-6
+  epochs: 50
+  batch_size: 6
+  batch_size_test: 1
+  valid_epoch_interval: 1
+  grad_clip: 1.0
+  save_top_k: -1
+  val_check_interval: 30
+  log_every_n_steps: 10
+  limit_val_batches: 5
+
+# RL 專屬設定
+rl:
+  lr_schedule:
+    type: step
+    step_size: 5000
+    gamma: 0.5
+  ppo_epochs: 2
+  epsilon: 0.2
+  kl_coef: 0.025
+  kl_clip_value: 0.2
+  num_samples_per_prompt: 8
+  sampling_std: 1.0
+  
+  # Reward 權重
+  w_gt: 0.65
+  w_smooth: 0.1
+  w_score: 0.25
+  fs_reward_ckpt: "./utils/boxing_reward_utils/checkpoints_boxing/best_model_score.pth"
+  
+  smooth_floor: 0.0
+  smooth_floor_penalty: 0.0
+  
+  # Reference Update
+  update_ref_every_epoch: 2
+  ref_ema_alpha: 0.5
+  
+  # Delayed Sub-Trajectory
+  delayed_sub_trajectory:
+    enabled: true
+    sampling_mode: discrete
+    window_size: 5
+    num_discrete_steps: 5
+
+  ablation:
+    advantage_clamp:
+      enabled: false
+      min_std: 1e-4
+      clamp_val: 3.0
+    adaptive_kl:
+      enabled: false
+      target_kl: 0.05
+      kl_min: 0.001
+      kl_max: 0.5
+    noise_annealing:
+      enabled: false
+      start_std: 0.02
+      min_std: 0.005
+      decay_rate: 0.95
+    step_decay_advantage:
+      enabled: false
+      power: 1.0
+    topk_gating:
+      enabled: false
+      ratio: 0.5
+
+# PyTorch Lightning 系統設定
+system:
+  accelerator: "gpu"
+  devices: [0]
+  strategy: "ddp_find_unused_parameters_true"
+  precision: "32-true"
+  seed: 42
+
+exp_name: "rl"
+
+hydra:
+  run:
+    dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}

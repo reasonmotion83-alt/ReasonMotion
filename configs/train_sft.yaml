@@ -1,0 +1,35 @@
+defaults:
+  - dataset: finefs
+  - model: sft_baseline
+  - _self_
+
+# 快速測試開關 (若為 true，則所有資料集只取 1% 的資料量)
+quick_test: false
+
+# 訓練迴圈超參數
+training:
+  epochs: 500
+  batch_size: 32
+  batch_size_test: 32
+  lr: 1.0e-3
+  valid_epoch_interval: 10
+  grad_clip: 1.0
+  cfg_dropout_prob: 0.05    # SFT 期間將文字 Embedding 歸零的機率，用來提升 CFG 的 Robustness
+  gen_type: "ddpm"          # 底層生成模型架構: 'ddpm' (Diffusion) 或 'flow_matching'
+  save_top_k: -1            # 儲存 Checkpoint 的數量限制 (-1 代表儲存全部，方便觀察流變)
+
+# PyTorch Lightning 系統設定
+system:
+  accelerator: "gpu"
+  devices: [1,2]            # 使用所有可用 GPU
+  strategy: "ddp"
+  precision: "32-true"   # 支援 16-mixed 以節省顯存
+  seed: 42
+
+# 定義實驗名稱標籤，方便隨時覆寫 (例如 python train.py exp_name=sft+moe)
+exp_name: "sft"
+
+# 覆寫 Hydra 預設的輸出目錄命名規則
+hydra:
+  run:
+    dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}

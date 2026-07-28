@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*$py.class
+
+# PyTorch & Model Checkpoints
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.onnx
+*.bin
+
+# Output & Logs
+outputs/
+logs/
+runs/
+tb_logs/
+.hydra/
+wandb/
+
+# Python / Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Large Datasets & Binary files
+*.npy
+*.npz
+*.pk
+*.pkl

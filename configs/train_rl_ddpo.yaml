@@ -1,0 +1,84 @@
+defaults:
+  - dataset: finefs
+  - _self_
+
+sft_dir: "" # 必須由命令列提供，例如 python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
+sft_ckpt: null
+
+quick_test: false
+
+training:
+  lr: 5e-6
+  epochs: 50
+  batch_size: 2
+  batch_size_test: 1
+  valid_epoch_interval: 1
+  grad_clip: 1.0
+  save_top_k: -1
+  val_check_interval: 30
+  log_every_n_steps: 10
+  limit_val_batches: 5
+
+rl:
+  algorithm: ddpo                  # 指定為 DDPO 演算法系統
+  critic_lr: 1e-4                  # Value Network (Critic) 學習率
+  lr_schedule:
+    type: step
+    step_size: 5000
+    gamma: 0.5
+  ppo_epochs: 2
+  epsilon: 0.0001                  # DDPO Paper Appendix D.1 clip_range = 1e-4
+  kl_coef: 0.05
+  kl_clip_value: 0.2
+  num_samples_per_prompt: 16
+  sampling_std: 1.0
+  
+  # Reward 權重 (與 vis-GRPO 保持完全對齊)
+  w_gt: 0.65
+  w_smooth: 0.1
+  w_score: 0.25
+  fs_reward_ckpt: "/home/allen/ReasonMotion_Predictor/utils/fs_reward_utils/checkpoints_goe/best_model_goe.pth"
+  
+  smooth_floor: 0.0
+  smooth_floor_penalty: 0.0
+  
+  update_ref_every_epoch: 2
+  ref_ema_alpha: 0.5
+  
+  # ⭐️ 原汁原味 DDPO：關閉 delayed_sub_trajectory 與所有 custom ablations
+  delayed_sub_trajectory:
+    enabled: false
+    sampling_mode: discrete
+    window_size: 5
+    num_discrete_steps: 5
+
+  ablation:
+    advantage_clamp:
+      enabled: false
+    adaptive_kl:
+      enabled: false
+    noise_annealing:
+      enabled: false
+    step_decay_advantage:
+      enabled: false
+    topk_gating:
+      enabled: false
+
+system:
+  accelerator: "gpu"
+  devices: [1,2]
+  strategy: "ddp_find_unused_parameters_true"
+  precision: "32-true"
+  seed: 42
+
+exp_name: "ablation_ddpo"
+
+hydra:
+  run:
+    dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}
+
+dataset:
+  filter_single_rotation: true
+  disable_sliding: true    # ⭐️ 關閉滑動視窗切片：每條影片只取 start=0 最標準起手視窗
+  data_ratio: 0.1        # ⭐️ 隨機抽樣縮減至 25% (約 64-80 個高品質 sample)
+  skip_rate: 30
