@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 
 class TextEncoder(nn.Module):
     """
-    將 list[str] → (tok_emb, tok_mask)
+    Converts list[str] → (tok_emb, tok_mask)
         tok_emb  : (B,T,384)
         tok_mask : (B,T)  1 = real token, 0 = pad
     """
@@ -20,7 +20,7 @@ class TextEncoder(nn.Module):
         self.device = torch.device(device)
         self.max_len = max_len
 
-        # 取得 BERT backbone
+        # Get the BERT backbone
         self.bert = self.sbert[0].auto_model        # transformers.PreTrainedModel
         self.tokenizer = self.sbert.tokenizer
 

@@ -2,7 +2,7 @@ defaults:
   - dataset: finefs
   - _self_
 
-sft_dir: "" # 必須由命令列提供，例如 python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
+sft_dir: "" # Must be provided on the command line, e.g. python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
 sft_ckpt: null
 
 quick_test: false
@@ -20,8 +20,8 @@ training:
   limit_val_batches: 5
 
 rl:
-  algorithm: ddpo                  # 指定為 DDPO 演算法系統
-  critic_lr: 1e-4                  # Value Network (Critic) 學習率
+  algorithm: ddpo                  # Specifies the DDPO algorithm system
+  critic_lr: 1e-4                  # Value network (Critic) learning rate
   lr_schedule:
     type: step
     step_size: 5000
@@ -33,7 +33,7 @@ rl:
   num_samples_per_prompt: 16
   sampling_std: 1.0
   
-  # Reward 權重 (與 vis-GRPO 保持完全對齊)
+  # Reward weights (kept fully aligned with vis-GRPO)
   w_gt: 0.65
   w_smooth: 0.1
   w_score: 0.25
@@ -45,7 +45,7 @@ rl:
   update_ref_every_epoch: 2
   ref_ema_alpha: 0.5
   
-  # ⭐️ 原汁原味 DDPO：關閉 delayed_sub_trajectory 與所有 custom ablations
+  # ⭐️ Vanilla DDPO: disables delayed_sub_trajectory and all custom ablations
   delayed_sub_trajectory:
     enabled: false
     sampling_mode: discrete
@@ -79,6 +79,6 @@ hydra:
 
 dataset:
   filter_single_rotation: true
-  disable_sliding: true    # ⭐️ 關閉滑動視窗切片：每條影片只取 start=0 最標準起手視窗
-  data_ratio: 0.1        # ⭐️ 隨機抽樣縮減至 25% (約 64-80 個高品質 sample)
+  disable_sliding: true    # ⭐️ Disable sliding-window clipping: take only the standard start=0 window from each video
+  data_ratio: 0.1        # ⭐️ Randomly subsample down to 25% (roughly 64-80 high-quality samples)
   skip_rate: 30

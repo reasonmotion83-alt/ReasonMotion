@@ -6,8 +6,10 @@ from modules.model import ModelMain
 class FlowMatchingModel(ModelMain):
     """
     Experimental Flow Matching (Rectified Flow) Model.
-    繼承現有網路架構，將原本的預測雜訊 (Diffusion) 替換為預測向量場 (Vector Field)。
-    完全不改變底層的 Transformer 參數維度，並擴充支援連續時間 GRPO 強化學習訓練。
+    Inherits the existing network architecture, replacing the original noise prediction
+    (Diffusion) with vector field prediction (Vector Field).
+    Does not change the underlying Transformer parameter dimensions at all, and extends
+    support for continuous-time GRPO reinforcement learning training.
     """
     def __init__(self, config, device, target_dim):
         super().__init__(config, device, target_dim)
@@ -20,33 +22,33 @@ class FlowMatchingModel(ModelMain):
         B, K, L = pose.shape
         device = pose.device
         
-        # 1. 抽樣連續時間 t ~ U(1e-5, 1.0)
+        # 1. Sample continuous time t ~ U(1e-5, 1.0)
         t = torch.rand((B,), device=device, dtype=pose.dtype) * (1.0 - 1e-5) + 1e-5
-        
-        # 2. 生成標準高斯雜訊 (x1)
+
+        # 2. Generate standard Gaussian noise (x1)
         x1 = torch.randn_like(pose)
-        
-        # 3. 沿著直線插值得到當前狀態 x_t
+
+        # 3. Linearly interpolate to get the current state x_t
         t_expand = t.view(B, 1, 1)
         x_t = t_expand * x1 + (1.0 - t_expand) * pose
-        
-        # 4. 目標向量場 (Vector Field)
+
+        # 4. Target vector field (Vector Field)
         v_target = x1 - pose
-        
-        # 5. 網路預測向量場
-        # 將 t 放縮到網路習慣的尺度 (0 ~ num_steps) 以適配原有的 Sinusoidal Embedding
+
+        # 5. Network predicts the vector field
+        # Scale t to the network's expected range (0 ~ num_steps) to fit the original Sinusoidal Embedding
         t_scaled = t * self.num_steps
         
         inp = self.set_input_to_diffmodel(x_t, pose, mask)
         v_pred = self.diffmodel(inp, side_info, t_scaled, text_emb=text_embedding)
         v_pred = v_pred.reshape(B, K, L)
         
-        # 6. 計算 Reconstruction Loss (只在 1 - cond_mask 的區域計算)
+        # 6. Compute Reconstruction Loss (only over the 1 - cond_mask region)
         loss = ((v_pred - v_target) * (1 - mask)).pow(2).sum()
         denom = (1 - mask).sum().clamp(min=1)
         loss = loss / denom
-        
-        # MoE load balancing loss (如果存在)
+
+        # MoE load balancing loss (if present)
         if self.balancing_loss:
             if hasattr(self.diffmodel, 'get_load_balancing_loss'):
                 load_balancing_loss, _total_fi = self.diffmodel.get_load_balancing_loss()
@@ -75,7 +77,7 @@ class FlowMatchingModel(ModelMain):
         else:
             text_rep = text_embedding.repeat_interleave(n_samples, dim=0) if text_embedding is not None else None
             
-        # 初始化 x_1 (Noise)
+        # Initialize x_1 (Noise)
         if noisy_data is not None:
             if noisy_data.ndim == 4 and noisy_data.shape[1] == n_samples:
                 x_t = noisy_data.to(device=device, dtype=pose.dtype).clone().reshape(B * n_samples, K, L)
@@ -86,10 +88,10 @@ class FlowMatchingModel(ModelMain):
         else:
             x_t = torch.randn(B * n_samples, K, L, device=device, dtype=pose.dtype)
             
-        # Euler 積分步長
+        # Euler integration step size
         dt = 1.0 / self.num_steps
-        
-        # 從 t=1 往 t=0 解 ODE (Noise -> Data)
+
+        # Solve the ODE from t=1 to t=0 (Noise -> Data)
         t_steps = torch.linspace(1.0, dt, self.num_steps, device=device)
         
         for t in t_steps:
@@ -101,14 +103,14 @@ class FlowMatchingModel(ModelMain):
             # Euler ODE step: x_{t-dt} = x_t - v * dt
             x_t = x_t - v_pred * dt
             
-            # 在條件幀強制覆蓋真實資料 (In-painting constraint)
+            # Force-overwrite ground-truth data on conditioning frames (In-painting constraint)
             x_t = (1 - cond_rep) * x_t + cond_rep * obs_rep
             
         final_samples = x_t.reshape(B, n_samples, K, L)
         return final_samples, pose, (1 - mask), tp
 
     # =========================================================================
-    # 🌟 Flow Matching GRPO Reinforcement Learning (RL) 支援方法
+    # 🌟 Flow Matching GRPO Reinforcement Learning (RL) support methods
     # =========================================================================
 
     def sample_trajectory(self, text_emb, batch, G, return_step_log_probs=False, active_timesteps=None, diffmodel_hook=None):
@@ -124,7 +126,7 @@ class FlowMatchingModel(ModelMain):
         device = observed_data.device
 
         noise_scale = max(float(getattr(self, "sampling_std", 1.0)), 1e-6)
-        # 起點 t=1.0 的標準高斯雜訊
+        # Standard Gaussian noise at the starting point t=1.0
         x_t = torch.randn(B, 1, K, L, device=device).expand(-1, G, -1, -1).clone()
         all_latents = [x_t]
         total_log_probs = torch.zeros(B, G, device=device)
@@ -148,7 +150,7 @@ class FlowMatchingModel(ModelMain):
             x_t_flat = x_t.reshape(B * G, K, L)
             inp = self.set_input_to_diffmodel(x_t_flat, obs_rep, cond_rep)
             
-            # 使用連續浮點數時間輸入
+            # Use continuous floating-point time input
             t_vec = torch.full((B * G,), t.item() * self.num_steps, dtype=observed_data.dtype, device=device)
             
             if diffmodel_hook is not None:
@@ -166,11 +168,11 @@ class FlowMatchingModel(ModelMain):
             if step_idx < self.num_steps - 1:
                 is_active = (t_index in active_timesteps) if active_timesteps is not None else True
                 if is_active:
-                    # ⭐️ 數學優化：將噪聲標準差縮放 sqrt(dt)，確保 N 步隨機漫步後的總變異數收斂在 sampling_std^2，防止數值爆炸
+                    # ⭐️ Math optimization: scale the noise std by sqrt(dt) to ensure the total variance after N random-walk steps converges to sampling_std^2, preventing numerical blow-up
                     sigma = noise_scale * math.sqrt(dt)
                     z = torch.randn_like(mean)
                     x_prev = mean + sigma * z
-                    # 步驟對數機率 (Log-probability)
+                    # Step log-probability (Log-probability)
                     step_lp_elem = -0.5 * z ** 2 - math.log(sigma) - 0.5 * math.log(2 * math.pi)
                     step_lp = (step_lp_elem * future_mask).sum(dim=(1, 2)) / future_denom
                     step_lp = step_lp.reshape(B, G)
@@ -186,7 +188,7 @@ class FlowMatchingModel(ModelMain):
                 x_prev = (1 - cond_rep) * x_prev + cond_rep * obs_rep
                 x_t = x_prev.reshape(B, G, K, L)
             else:
-                # 最後一步為確定性映射到 t=0
+                # The last step is a deterministic mapping to t=0
                 x_prev = mean
                 x_prev = (1 - cond_rep) * x_prev + cond_rep * obs_rep
                 x_t = x_prev.reshape(B, G, K, L)
@@ -255,7 +257,7 @@ class FlowMatchingModel(ModelMain):
             mean = x_t_flat - v_pred * dt
             x_prev_flat = x_prev.reshape(B * G, K, L)
 
-            # ⭐️ 數學優化：對齊縮放後的噪聲標準差 sigma
+            # ⭐️ Math optimization: align with the scaled noise std sigma
             sigma = noise_scale * math.sqrt(dt)
             z = (x_prev_flat - mean) / sigma
             step_lp_elem = -0.5 * z ** 2 - math.log(sigma) - 0.5 * math.log(2 * math.pi)
@@ -335,7 +337,7 @@ class FlowMatchingModel(ModelMain):
             mean = x_t_flat - v_pred * dt
             x_prev_flat = x_prev.reshape(B * G, K, L).detach()
 
-            # ⭐️ 數學優化：對齊縮放後的噪聲標準差 sigma
+            # ⭐️ Math optimization: align with the scaled noise std sigma
             sigma = noise_scale * math.sqrt(dt)
             z = (x_prev_flat - mean) / sigma
             step_lp_elem = -0.5 * z ** 2 - math.log(sigma) - 0.5 * math.log(2 * math.pi)

@@ -5,18 +5,18 @@ data_dir: "./data/h36m"
 protocol: "standard"          
 joints: 17
 
-# 預測視窗
+# Prediction window
 input_n: 25
 output_n: 100
 
-# 採樣與丟失設定
+# Sampling and missing-data settings
 skip_rate: 5
-val_skip_rate: 5           
+val_skip_rate: 5
 downsample: 2
 miss_type: "no_miss"
 miss_rate: 0
 
-# 其他資料處理
+# Other data processing
 no_overlap: false
 all_data: true
 data_ratio: 1.0

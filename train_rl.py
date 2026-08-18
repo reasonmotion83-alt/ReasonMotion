@@ -23,12 +23,12 @@ from utils.vis import VisualizationCallback
 @hydra.main(version_base=None, config_path="configs", config_name="train_rl")
 def main(cfg: DictConfig):
     if not cfg.get("sft_dir"):
-        raise ValueError("必須提供 SFT 目錄，例如: python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS")
-    
+        raise ValueError("An SFT directory must be provided, e.g.: python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS")
+
     sft_dir = cfg.sft_dir
     sft_config_path = os.path.join(sft_dir, ".hydra", "config.yaml")
     if not os.path.exists(sft_config_path):
-        raise FileNotFoundError(f"找不到 SFT 設定檔: {sft_config_path}")
+        raise FileNotFoundError(f"SFT config file not found: {sft_config_path}")
         
     print(f"📥 Loading SFT base config from {sft_config_path}")
     sft_cfg = OmegaConf.load(sft_config_path)
@@ -38,7 +38,7 @@ def main(cfg: DictConfig):
     merged_cfg = OmegaConf.merge(sft_cfg, cfg)
     
     OmegaConf.set_readonly(merged_cfg, False)
-    # 對齊 model.name 與 training.gen_type
+    # Align model.name with training.gen_type
     model_name = merged_cfg.model.get("name", "sft_baseline")
     gen_type = merged_cfg.training.get("gen_type", "ddpm")
     if model_name == "flow_matching" or gen_type == "flow_matching":
@@ -62,27 +62,27 @@ def main(cfg: DictConfig):
     
     data_ratio = 0.01 if is_quick else merged_cfg.dataset.get('data_ratio', 1.0)
 
-    # 1. 建立 Dataset
+    # 1. Build Dataset
     train_ds, target_dim, _ = build_dataset(merged_cfg, split=0, data_ratio=data_ratio)
     valid_ds, _, edges      = build_dataset(merged_cfg, split=1, data_ratio=data_ratio)
     
-    # 2. 尋找 SFT Checkpoint
+    # 2. Locate the SFT Checkpoint
     ckpt_dir = os.path.join(sft_dir, "checkpoints")
     ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
     if not ckpts:
-        raise FileNotFoundError(f"找不到 SFT Checkpoint: {ckpt_dir}")
-        
+        raise FileNotFoundError(f"SFT Checkpoint not found: {ckpt_dir}")
+
     sft_ckpt_spec = merged_cfg.get("sft_ckpt", None)
     if sft_ckpt_spec:
         sft_ckpt_spec_str = str(sft_ckpt_spec)
-        # 支援完整路徑或模糊比對
+        # Support a full path or fuzzy matching
         if os.path.exists(sft_ckpt_spec_str):
             sft_ckpt = sft_ckpt_spec_str
         else:
-            # 優先搜尋精確世代標記以防包含 '=' 導致 Hydra 解析失敗
+            # Prefer searching for the exact epoch marker first, to avoid '=' causing Hydra parsing failures
             match_patterns = []
             if sft_ckpt_spec_str.isdigit():
-                # 補零支援 (比如輸入 30 可以匹配 030)
+                # Zero-padding support (e.g. entering 30 can match 030)
                 zero_padded = f"{int(sft_ckpt_spec_str):03d}"
                 match_patterns.extend([
                     f"sft_epoch={zero_padded}-", f"sft_epoch={zero_padded}_",
@@ -90,7 +90,7 @@ def main(cfg: DictConfig):
                     f"sft-epoch={zero_padded}-", f"sft-epoch={zero_padded}_",
                     f"moe-epoch={zero_padded}-", f"moe-epoch={zero_padded}_",
                 ])
-                # 原本無補零的匹配
+                # Matching without zero-padding, as originally
                 match_patterns.extend([
                     f"sft_epoch={sft_ckpt_spec_str}-", f"sft_epoch={sft_ckpt_spec_str}_",
                     f"moe_epoch={sft_ckpt_spec_str}-", f"moe_epoch={sft_ckpt_spec_str}_",
@@ -108,15 +108,15 @@ def main(cfg: DictConfig):
                     
             if not matching_ckpts:
                 available = [os.path.basename(c) for c in ckpts]
-                raise FileNotFoundError(f"在 {ckpt_dir} 中找不到匹配 '{sft_ckpt_spec}' 的 Checkpoint。所有可用檔案: {available}")
+                raise FileNotFoundError(f"No Checkpoint matching '{sft_ckpt_spec}' found in {ckpt_dir}. Available files: {available}")
             sft_ckpt = matching_ckpts[0]
     else:
-        # 預設找修改時間最新的
+        # Default to the most recently modified one
         ckpts.sort(key=os.path.getmtime)
         sft_ckpt = ckpts[-1]
     print(f"📥 Found SFT Checkpoint: {sft_ckpt}")
     
-    # 3. 建立 System (GRPOSystem, DDPOSystem 或 PPOSystem)
+    # 3. Build the System (GRPOSystem, DDPOSystem, or PPOSystem)
     algorithm = str(merged_cfg.get("rl", {}).get("algorithm", "grpo")).lower()
     if algorithm == "ddpo":
         from systems.ddpo_system import DDPOSystem
@@ -131,7 +131,7 @@ def main(cfg: DictConfig):
         print("🚀 Initializing GRPOSystem (vis-GRPO Critic-Free RL)...")
         system = GRPOSystem(config=merged_cfg, target_dim=target_dim, val_dataset=valid_ds)
     
-    # 載入 SFT 權重 (只載入 policy model / ref_model)
+    # Load SFT weights (only load into the policy model / ref_model)
     import torch
     state_dict = torch.load(sft_ckpt, map_location='cpu')["state_dict"]
     system.load_state_dict(state_dict, strict=False)
@@ -152,7 +152,7 @@ def main(cfg: DictConfig):
     os.makedirs(hydra_dir, exist_ok=True)
     OmegaConf.save(merged_cfg, os.path.join(hydra_dir, "config.yaml"))
     
-    # 4. 設定 回呼函數與 Logger
+    # 4. Set up callbacks and Logger
     new_ckpt_dir = os.path.join(output_dir, "checkpoints")
     checkpoint_callback = ModelCheckpoint(
         dirpath=new_ckpt_dir,
@@ -171,7 +171,7 @@ def main(cfg: DictConfig):
     csv_logger = StepCorrectedCSVLogger(save_dir=output_dir, name="csv_logs", version="")
     logger_list = [tb_logger, csv_logger]
     
-    # 5. 啟動 Trainer
+    # 5. Launch the Trainer
     val_check_interval = merged_cfg.training.get("val_check_interval", None)
     log_every_n_steps = merged_cfg.training.get("log_every_n_steps", 50)
     

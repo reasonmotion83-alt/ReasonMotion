@@ -3,21 +3,21 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 """
-ReasonMotion 視覺化與測試套件 (Visualizer Suite)
-這個腳本用來產生各種維度的 3D 骨架生成影片，支援 SFT、MoE 與 RL 模型。
+ReasonMotion Visualization and Testing Suite (Visualizer Suite)
+This script generates 3D skeleton videos across various dimensions, supporting SFT, MoE, and RL models.
 
-使用範例：
+Usage examples:
 
-1. [infer 模式] - 最純粹的視覺化：只生成指定的 1 個動作與 GT 進行 side-by-side 並排對比。
+1. [infer mode] - The purest visualization: generates just the 1 specified motion and does a side-by-side comparison with GT.
    python scripts/visualize.py --exp_dir outputs/sft_finefs_2026-07-13_12-24 --mode infer --motion /home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk --texts triple
 
-2. [grid 模式] - 適合 RL 的進化史：載入所有 Checkpoint，畫出「X軸=訓練進度」×「Z軸=不同提示」的進化網格。
+2. [grid mode] - Good for tracking RL evolution: loads all checkpoints and plots an evolution grid with "X-axis = training progress" x "Z-axis = different prompts".
    python scripts/visualize.py --exp_dir outputs/sft_finefs_2026-07-13_12-24 --mode grid --motion /home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk --texts single double triple quadruple
 
-3. [cfg_sweep 模式] - 尋找最佳引導強度：針對最佳 Checkpoint，測試不同的 cfg_scale (0.0~5.0) 來觀察崩潰點。
+3. [cfg_sweep mode] - Finding the optimal guidance strength: for the best checkpoint, tests different cfg_scale values (0.0~5.0) to observe the collapse point.
    python scripts/visualize.py --exp_dir outputs/sft_finefs_2026-07-13_12-24 --mode cfg_sweep --motion /home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk --texts triple
 
-4. [diversity 模式] - 多樣性與穩定性測試：固定 Prompt，用 5 種不同 Random Seed 生成並排比對 (抓壞點與 Mode Collapse)。
+4. [diversity mode] - Diversity and stability test: fixes the prompt and generates with 5 different random seeds for a side-by-side comparison (to catch bad cases and mode collapse).
    python scripts/visualize.py --exp_dir outputs/sft_finefs_2026-07-13_12-24 --mode diversity --motion /home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk --texts triple
 """
 import glob
@@ -35,14 +35,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
-# 引用專案內部的模組
+# Import project-internal modules
 from systems.sft_system import SFTSystem
 from systems.grpo_system import GRPOSystem
 from utils.text_encoder import TextEncoder
 from data.finefs import EDGES as EDGES_FINEFS, NUM_JOINTS as NUM_JOINTS_FINEFS
 from data.skeleton import EDGES_BODY25
 
-# ==================== 繪圖常數設定 ====================
+# ==================== Plotting Constants ====================
 TEXT_BASE_COLORS = {
     # Figure Skating
     "single":    np.array([1.0, 0.20, 0.20]),   # Red
@@ -60,9 +60,9 @@ TEXT_BASE_COLORS = {
 }
 
 
-# ==================== 渲染核心 (通用網格視覺化) ====================
+# ==================== Rendering Core (Generic Grid Visualization) ====================
 def render_3d_grid_video(trajectories, gt_data, texts, col_labels, output_mp4, fps=30):
-    print(f"🎥 準備渲染影片: {output_mp4} ...")
+    print(f"🎥 Preparing to render video: {output_mp4} ...")
     x_spacing = 0.55
     z_spacing = 0.70
     seq_len = gt_data.shape[0]
@@ -123,7 +123,7 @@ def render_3d_grid_video(trajectories, gt_data, texts, col_labels, output_mp4, f
     row_label_x = x_lim[0] - 0.05
 
     frames = []
-    for t_idx in tqdm(range(seq_len), desc="渲染影格"):
+    for t_idx in tqdm(range(seq_len), desc="Rendering frames"):
         ax.clear()
         ax.set_xlim(x_lim); ax.set_ylim(z_lim); ax.set_zlim(y_lim)
         ax.set_xlabel("X"); ax.set_ylabel("Depth"); ax.set_zlabel("Height")
@@ -158,17 +158,17 @@ def render_3d_grid_video(trajectories, gt_data, texts, col_labels, output_mp4, f
     if frames:
         os.makedirs(os.path.dirname(output_mp4), exist_ok=True)
         imageio.mimsave(output_mp4, frames, fps=fps)
-        print(f"✅ 渲染完成！已儲存至: {output_mp4}")
+        print(f"✅ Rendering complete! Saved to: {output_mp4}")
 
-# ==================== 輔助工具 ====================
+# ==================== Helper Utilities ====================
 def load_hydra_config(exp_dir):
     cfg_path = os.path.join(exp_dir, ".hydra", "config.yaml")
     if not os.path.exists(cfg_path):
-        raise FileNotFoundError(f"找不到 Hydra 設定檔: {cfg_path}")
+        raise FileNotFoundError(f"Hydra config file not found: {cfg_path}")
     return OmegaConf.load(cfg_path)
 
 def build_model_from_checkpoint(config, ckpt_path, device):
-    print(f"📦 載入權重: {ckpt_path}")
+    print(f"📦 Loading weights: {ckpt_path}")
     ds_name = config.get("dataset", {}).get("name", "").lower()
     if ds_name == "h36m":
         target_dim = config.get("dataset", {}).get("joints", 17) * 3
@@ -221,11 +221,11 @@ def load_gt_motion(res_pk_path, config, window=0, sample_idx=0):
     return gt_pose, input_n, output_n
 
 
-# ==================== 主要功能模式 ====================
+# ==================== Main Functional Modes ====================
 def get_target_checkpoint(args, ckpt_dir):
     ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
     if not ckpts:
-        raise ValueError(f"找不到任何 .ckpt 於 {ckpt_dir}")
+        raise ValueError(f"No .ckpt found under {ckpt_dir}")
         
     def get_epoch_or_step(path):
         name = os.path.basename(path)
@@ -278,7 +278,7 @@ def get_target_checkpoint(args, ckpt_dir):
                 f"sft_epoch={target_epoch}" in name or 
                 f"moe_epoch={target_epoch}" in name):
                 return ckpt
-        raise ValueError(f"在 {ckpt_dir} 中找不到對應 Epoch/Step {target_epoch} 的 Checkpoint！可用檔案：{[os.path.basename(c) for c in ckpts]}")
+        raise ValueError(f"No checkpoint matching Epoch/Step {target_epoch} found in {ckpt_dir}! Available files: {[os.path.basename(c) for c in ckpts]}")
     
     ckpts_sorted = sorted(ckpts, key=os.path.getmtime)
     return ckpts_sorted[-1]
@@ -324,8 +324,8 @@ def run_grid_mode(args, config, device, text_encoder, gt_feed):
     ckpts = sorted(ckpts, key=get_epoch_or_step)
     
     if not ckpts:
-        raise ValueError(f"找不到任何 .ckpt 於 {ckpt_dir}")
-        
+        raise ValueError(f"No .ckpt found under {ckpt_dir}")
+
     # Filter by --steps if specified
     if getattr(args, "steps", None) and len(args.steps) > 0:
         filtered_ckpts = []
@@ -341,7 +341,7 @@ def run_grid_mode(args, config, device, text_encoder, gt_feed):
         indices = np.linspace(0, len(ckpts) - 1, args.max_checkpoints, dtype=int)
         ckpts = [ckpts[i] for i in indices]
         
-    print(f"🔍 篩選後將評估 {len(ckpts)} 個 Checkpoints。")
+    print(f"🔍 After filtering, {len(ckpts)} checkpoints will be evaluated.")
     col_labels = []
     for c in ckpts:
         name = os.path.basename(c)
@@ -434,18 +434,18 @@ def run_infer_mode(args, config, device, text_encoder, gt_feed):
     return trajectories, col_labels, ckpt_path
 
 def main():
-    parser = argparse.ArgumentParser(description="ReasonMotion 全能視覺化神探")
-    parser.add_argument("--exp_dir", required=True, help="Hydra 訓練輸出資料夾 (例: outputs/sft_xxx)")
+    parser = argparse.ArgumentParser(description="ReasonMotion all-purpose visualization detective")
+    parser.add_argument("--exp_dir", required=True, help="Hydra training output folder (e.g. outputs/sft_xxx)")
     parser.add_argument("--mode", type=str, choices=["grid", "cfg_sweep", "diversity", "infer"], default="infer")
-    parser.add_argument("--motion", type=str, default=None, help="測試用的 pk 檔案路徑 (不填時自動載入 Boxing/FineFS 資料集隨機抽樣)")
-    parser.add_argument("--texts", nargs="+", default=None, help="提示詞列表 (預設隨機動作類型或預設動作)")
-    parser.add_argument("--window", type=int, default=0, help="擷取骨架起始點 (Sliding Window)")
-    parser.add_argument("--seed", type=int, default=42, help="隨機種子")
-    parser.add_argument("--epoch", type=int, default=-1, help="指定載入的 Epoch 世代 (預設 -1 載入最新的一代)")
-    parser.add_argument("--step", type=int, default=-1, help="指定載入的 Step 步數 (RL-only，預設 -1 載入最新的一代)")
-    parser.add_argument("--steps", type=int, nargs="+", default=None, help="指定多個 Steps (例: --steps 60 120 300 720)")
-    parser.add_argument("--num_samples", type=int, default=1, help="當 --motion 未指定時，從資料集隨機抽取的 sample 數量 (如 20)")
-    parser.add_argument("--filter_punches", action="store_true", help="優先過濾出真正的出拳動作 (排除 neutral 中立姿態)")
+    parser.add_argument("--motion", type=str, default=None, help="Path to the pk file to test with (if omitted, automatically loads a random sample from the Boxing/FineFS dataset)")
+    parser.add_argument("--texts", nargs="+", default=None, help="List of prompts (defaults to a random motion type or default motion)")
+    parser.add_argument("--window", type=int, default=0, help="Starting point for the skeleton clip (sliding window)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--epoch", type=int, default=-1, help="Which epoch to load (default -1 loads the latest epoch)")
+    parser.add_argument("--step", type=int, default=-1, help="Which step to load (RL-only, default -1 loads the latest step)")
+    parser.add_argument("--steps", type=int, nargs="+", default=None, help="Specify multiple steps (e.g. --steps 60 120 300 720)")
+    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to randomly draw from the dataset when --motion is not specified (e.g. 20)")
+    parser.add_argument("--filter_punches", action="store_true", help="Preferentially filter for genuine punch motions (excluding the neutral pose)")
     args = parser.parse_args()
 
 
@@ -454,20 +454,20 @@ def main():
     ds_name = config.get("dataset", {}).get("name", "finefs").lower()
     text_encoder = TextEncoder(device=device)
 
-    # 判定 sample 來源
+    # Determine the sample source
     dataset_samples = []
     if args.motion and os.path.exists(args.motion) and args.motion.endswith(".pk"):
         dataset_samples.append({"path": args.motion, "label": None, "idx": 0})
     else:
         from train import build_dataset
-        print(f"📦 載入資料集 ({ds_name}) 進行樣本抽樣 (num_samples={args.num_samples})...")
+        print(f"📦 Loading dataset ({ds_name}) for sample drawing (num_samples={args.num_samples})...")
         val_dataset, _, _ = build_dataset(config, split=1)
         np.random.seed(args.seed)
-        
+
         all_indices = list(range(len(val_dataset)))
         if args.filter_punches:
             punch_indices = [i for i in all_indices if val_dataset[i].get("motion_name", "neutral") != "neutral"]
-            print(f"🥊 啟用出拳動作過濾：從 {len(punch_indices)} 個真實出拳樣本中抽樣...")
+            print(f"🥊 Punch motion filtering enabled: drawing samples from {len(punch_indices)} genuine punch samples...")
             candidate_indices = punch_indices if len(punch_indices) >= args.num_samples else all_indices
         else:
             candidate_indices = all_indices
@@ -498,7 +498,7 @@ def main():
         if sample_info.get("item") and "motion_name" in sample_info["item"]:
             gt_feed["motion_name"] = [sample_info["item"]["motion_name"]]
 
-        # 設定提示詞
+        # Set the prompts
         if args.texts is None or len(args.texts) == 0:
             if motion_label:
                 texts = [motion_label]
@@ -510,7 +510,7 @@ def main():
             texts = args.texts
         args.texts = texts
 
-        print(f"\n🚀 啟動模式: {args.mode.upper()} [Sample Index: {s_idx}, Prompt: {texts}]")
+        print(f"\n🚀 Launching mode: {args.mode.upper()} [Sample Index: {s_idx}, Prompt: {texts}]")
         ckpt_path = None
         if args.mode == "grid":
             trajectories, col_labels, _ = run_grid_mode(args, config, device, text_encoder, gt_feed)
@@ -534,7 +534,7 @@ def main():
         
         with open(pk_path, "wb") as f:
             pickle.dump({"trajectories": trajectories, "col_labels": col_labels, "texts": texts}, f)
-        print(f"💾 Numpy 矩陣已備份至: {pk_path}")
+        print(f"💾 Numpy arrays backed up to: {pk_path}")
 
 if __name__ == "__main__":
     main()

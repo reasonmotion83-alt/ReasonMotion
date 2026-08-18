@@ -4,18 +4,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 """
 ReasonMotion RL Diversity and Parameter Sweep Visualizer
-這個腳本用來進行 RL/SFT 模型的離線多樣性參數掃描 (Parameter Sweep)，
-可測試不同的 sampling_std 與主動探索步數 (num_discrete_steps/window_size)，
-並在 3D 空間中以排開的骨架網格直觀對比變體分岔的多樣性。
+This script performs an offline diversity parameter sweep for RL/SFT models,
+testing different values of sampling_std and active exploration step counts (num_discrete_steps/window_size),
+and visually compares the diversity of variant branches using skeleton grids laid out in 3D space.
 
-使用範例：
-1. 掃描不同的 sampling_std 大小：
+Usage examples:
+1. Sweep different sampling_std values:
    python scripts/visualize_rl_diversity.py --exp_dir outputs/rl_finefs_2026-07-15_00-03 --sweep_type std --sampling_std 0.02 0.05 0.1 0.2 0.5 --num_discrete_steps 5
 
-2. 掃描不同數量的 active steps：
+2. Sweep different numbers of active steps:
    python scripts/visualize_rl_diversity.py --exp_dir outputs/rl_finefs_2026-07-15_00-03 --sweep_type steps --sampling_std 0.1 --num_discrete_steps 5 10 20 50
 
-3. 測試完全獨立的 DDPM 噪聲 (不啟用 delayed sub-trajectory)：
+3. Test fully independent DDPM noise (without delayed sub-trajectory):
    python scripts/visualize_rl_diversity.py --exp_dir outputs/rl_finefs_2026-07-15_00-03 --sweep_type std --sampling_std 0.02 0.05 0.1 0.2 --no_delayed
 """
 import glob
@@ -34,13 +34,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
-# 引用專案內部模組
+# Import project-internal modules
 from systems.sft_system import SFTSystem
 from systems.grpo_system import GRPOSystem
 from utils.text_encoder import TextEncoder
 from data.finefs import EDGES, NUM_JOINTS
 
-# ==================== 繪圖顏色定義 ====================
+# ==================== Plot Color Definitions ====================
 COL_COLORS = [
     np.array([0.1, 0.7, 0.3]),   # Green
     np.array([1.0, 0.5, 0.0]),   # Orange
@@ -50,9 +50,9 @@ COL_COLORS = [
     np.array([0.7, 0.7, 0.1]),   # Olive
 ]
 
-# ==================== 渲染核心 (通用網格視覺化) ====================
+# ==================== Rendering Core (Generic Grid Visualization) ====================
 def render_diversity_grid(trajectories, gt_data, swept_values, col_labels, num_variants, sweep_type, output_mp4, fps=30):
-    print(f"🎥 準備渲染多樣性影片: {output_mp4} ...")
+    print(f"🎥 Preparing to render diversity video: {output_mp4} ...")
     x_spacing = 0.55
     z_spacing = 0.70
     seq_len = gt_data.shape[0]
@@ -113,7 +113,7 @@ def render_diversity_grid(trajectories, gt_data, swept_values, col_labels, num_v
     row_label_x = x_lim[0] - 0.05
 
     frames = []
-    for t_idx in tqdm(range(seq_len), desc="渲染影格"):
+    for t_idx in tqdm(range(seq_len), desc="Rendering frames"):
         ax.clear()
         ax.set_xlim(x_lim); ax.set_ylim(z_lim); ax.set_zlim(y_lim)
         ax.set_xlabel("X"); ax.set_ylabel("Depth (Z)"); ax.set_zlabel("Height (Y)")
@@ -151,17 +151,17 @@ def render_diversity_grid(trajectories, gt_data, swept_values, col_labels, num_v
     if frames:
         os.makedirs(os.path.dirname(output_mp4), exist_ok=True)
         imageio.mimsave(output_mp4, frames, fps=fps)
-        print(f"✅ 渲染完成！已儲存至: {output_mp4}")
+        print(f"✅ Rendering complete! Saved to: {output_mp4}")
 
-# ==================== 輔助工具 ====================
+# ==================== Helper Utilities ====================
 def load_hydra_config(exp_dir):
     cfg_path = os.path.join(exp_dir, ".hydra", "config.yaml")
     if not os.path.exists(cfg_path):
-        raise FileNotFoundError(f"找不到 Hydra 設定檔: {cfg_path}")
+        raise FileNotFoundError(f"Hydra config file not found: {cfg_path}")
     return OmegaConf.load(cfg_path)
 
 def build_model_from_checkpoint(config, ckpt_path, device):
-    print(f"📦 載入權重: {ckpt_path}")
+    print(f"📦 Loading weights: {ckpt_path}")
     is_rl = "kl_coef" in config or "rl" in config
     if is_rl:
         system = GRPOSystem.load_from_checkpoint(ckpt_path, map_location="cpu", strict=False)
@@ -192,8 +192,8 @@ def load_gt_motion(res_pk_path, config, window=0):
 def get_target_checkpoint(args, ckpt_dir):
     ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
     if not ckpts:
-        raise ValueError(f"找不到任何 .ckpt 於 {ckpt_dir}")
-        
+        raise ValueError(f"No .ckpt found under {ckpt_dir}")
+
     def get_epoch_or_step(path):
         name = os.path.basename(path)
         m_sft = re.search(r"sft_epoch=(\d+)", name)
@@ -245,7 +245,7 @@ def get_target_checkpoint(args, ckpt_dir):
                 f"sft_epoch={target_epoch}" in name or 
                 f"moe_epoch={target_epoch}" in name):
                 return ckpt
-        raise ValueError(f"在 {ckpt_dir} 中找不到對應 Epoch/Step {target_epoch} 的 Checkpoint！可用檔案：{[os.path.basename(c) for c in ckpts]}")
+        raise ValueError(f"No checkpoint matching Epoch/Step {target_epoch} found in {ckpt_dir}! Available files: {[os.path.basename(c) for c in ckpts]}")
     
     ckpts_sorted = sorted(ckpts, key=os.path.getmtime)
     return ckpts_sorted[-1]
@@ -267,24 +267,24 @@ def get_active_timesteps(sampling_mode, num_steps, num_discrete_steps=5, window_
         random.setstate(random_state)
     return active
 
-# ==================== 主要運算與統計 ====================
+# ==================== Main Computation and Statistics ====================
 def main():
-    parser = argparse.ArgumentParser(description="ReasonMotion RL/SFT 多樣性參數掃描與分析工具")
-    parser.add_argument("--exp_dir", required=True, help="訓練輸出資料夾 (例: outputs/sft_xxx 或 outputs/rl_xxx)")
-    parser.add_argument("--motion", default="/home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk", help="測試用的 pk 檔案路徑")
-    parser.add_argument("--text", default="triple", help="Inference 文字條件")
-    parser.add_argument("--epoch", type=int, default=-1, help="指定載入的 Epoch Checkpoint")
-    parser.add_argument("--step", type=int, default=-1, help="指定載入的 Step Checkpoint")
-    parser.add_argument("--sweep_type", choices=["std", "steps", "epoch"], default="std", help="掃描類型: std、steps 或 epoch")
-    parser.add_argument("--sampling_std", nargs="+", type=float, default=[0.02, 0.05, 0.1, 0.2, 0.5], help="欲測試的 sampling_std 清單")
-    parser.add_argument("--num_discrete_steps", nargs="+", type=int, default=[5, 10, 15, 20, 50], help="欲測試的離散探索步數清單")
-    parser.add_argument("--epochs", nargs="+", type=int, default=[30, 50, 100, 200, 500], help="欲對比測試的 Checkpoint Epochs 清單")
-    parser.add_argument("--steps", nargs="+", type=int, default=[900, 1800, 2700, 3600], help="欲對比測試的 Checkpoint Steps 清單")
+    parser = argparse.ArgumentParser(description="ReasonMotion RL/SFT diversity parameter sweep and analysis tool")
+    parser.add_argument("--exp_dir", required=True, help="Training output folder (e.g. outputs/sft_xxx or outputs/rl_xxx)")
+    parser.add_argument("--motion", default="/home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk", help="Path to the pk file to test with")
+    parser.add_argument("--text", default="triple", help="Text condition for inference")
+    parser.add_argument("--epoch", type=int, default=-1, help="Which epoch checkpoint to load")
+    parser.add_argument("--step", type=int, default=-1, help="Which step checkpoint to load")
+    parser.add_argument("--sweep_type", choices=["std", "steps", "epoch"], default="std", help="Sweep type: std, steps, or epoch")
+    parser.add_argument("--sampling_std", nargs="+", type=float, default=[0.02, 0.05, 0.1, 0.2, 0.5], help="List of sampling_std values to test")
+    parser.add_argument("--num_discrete_steps", nargs="+", type=int, default=[5, 10, 15, 20, 50], help="List of discrete exploration step counts to test")
+    parser.add_argument("--epochs", nargs="+", type=int, default=[30, 50, 100, 200, 500], help="List of checkpoint epochs to compare")
+    parser.add_argument("--steps", nargs="+", type=int, default=[900, 1800, 2700, 3600], help="List of checkpoint steps to compare")
     parser.add_argument("--sampling_mode", choices=["discrete", "continuous"], default="discrete")
-    parser.add_argument("--window_size", type=int, default=5, help="連續模式的窗口大小")
-    parser.add_argument("--no_delayed", action="store_true", help="強制關閉 delayed sub-trajectory")
-    parser.add_argument("--num_variants", type=int, default=3, help="每個參數設定要生成的變體數量")
-    parser.add_argument("--seed", type=int, default=123, help="基本隨機種子")
+    parser.add_argument("--window_size", type=int, default=5, help="Window size for continuous mode")
+    parser.add_argument("--no_delayed", action="store_true", help="Force-disable the delayed sub-trajectory")
+    parser.add_argument("--num_variants", type=int, default=3, help="Number of variants to generate per parameter setting")
+    parser.add_argument("--seed", type=int, default=123, help="Base random seed")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -321,26 +321,26 @@ def main():
         fixed_steps = args.num_discrete_steps[0]
         swept_values = args.sampling_std
         col_labels = [f"std={v}" for v in swept_values]
-        print(f"🔍 掃描類型: sampling_std, 數值清單: {swept_values} | 固定主動步數 = {fixed_steps}")
+        print(f"🔍 Sweep type: sampling_std, values: {swept_values} | fixed active steps = {fixed_steps}")
     elif args.sweep_type == "steps":
         fixed_std = args.sampling_std[0]
         swept_values = args.num_discrete_steps
         col_labels = [f"steps={v}" for v in swept_values]
-        print(f"🔍 掃描類型: active steps, 數值清單: {swept_values} | 固定 std = {fixed_std}")
+        print(f"🔍 Sweep type: active steps, values: {swept_values} | fixed std = {fixed_std}")
     else:
         if is_rl_step:
             swept_values = args.steps
             col_labels = [f"Step {v}" for v in swept_values]
-            print(f"🔍 掃描類型: Checkpoint Steps, 數值清單: {swept_values} | 固定 std = {args.sampling_std[0]}, 主動步數 = {args.num_discrete_steps[0]}")
+            print(f"🔍 Sweep type: checkpoint steps, values: {swept_values} | fixed std = {args.sampling_std[0]}, active steps = {args.num_discrete_steps[0]}")
         else:
             swept_values = args.epochs
             col_labels = [f"Ep {v}" for v in swept_values]
-            print(f"🔍 掃描類型: Checkpoint Epochs, 數值清單: {swept_values} | 固定 std = {args.sampling_std[0]}, 主動步數 = {args.num_discrete_steps[0]}")
+            print(f"🔍 Sweep type: checkpoint epochs, values: {swept_values} | fixed std = {args.sampling_std[0]}, active steps = {args.num_discrete_steps[0]}")
 
     trajectories = {}
     diversity_stats = []
 
-    print("\n--- 🚀 開始多樣性生成與統計 ---")
+    print("\n--- 🚀 Starting diversity generation and statistics ---")
     
     for col_i, val in enumerate(swept_values):
         if args.sweep_type == "std":

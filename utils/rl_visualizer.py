@@ -152,13 +152,13 @@ class RLVisualizer:
             torch.cuda.empty_cache()
 
     def _prepare_common_inputs(self, text_encoder):
-        # 準備共用輸入
+        # Prepare shared inputs
         pose = self.fixed_sample["pose"]
         tp = self.fixed_sample["tp"]
         gen_mask = self.fixed_sample["gen_mask"]
         motion_name = self.fixed_sample["motion_name"]
 
-        # 文本條件 (Text Embedding)
+        # Text condition (Text Embedding)
         tok_emb, tok_mask = text_encoder([motion_name])
         tok_emb, tok_mask = tok_emb.to(self.device), tok_mask.to(self.device)
         text_cond = (tok_emb, tok_mask)
@@ -168,31 +168,31 @@ class RLVisualizer:
 
     def _rank_and_render(self, epoch, mode_name, variants, reward_model, num_variants, pure_pred=None, step=None):
         """
-        對生成的變體進行 Reward 排序並準備渲染資料。
-        
+        Ranks the generated variants by reward and prepares the rendering data.
+
         Args:
-            pure_pred (Tensor, optional): 不含隨機性的純預測 (Mean) 軌跡，將繪製為紅色。 Shape: (T, K)
+            pure_pred (Tensor, optional): The deterministic, noise-free prediction (Mean) trajectory, drawn in red. Shape: (T, K)
         """
-        # Reward Model 需要 GT 資料: (1, 1, T, J, 3)
+        # The Reward Model needs GT data: (1, 1, T, J, 3)
         gt_pose = self.fixed_sample["pose"] # (1, T, K)
         gt_5d = gt_pose.reshape(1, 1, gt_pose.shape[1], self.joints, 3)
-        
-        # 處理 Variants: 確保在 CPU 上以節省顯存
+
+        # Handle variants: keep them on CPU to save memory
         if variants.device != torch.device("cpu"):
             variants = variants.detach().cpu()
-            
+
         variants_TK = variants.permute(0, 2, 1) # (G, T, K)
-        
-        # 在 CPU 上分批計算 Reward (避免 OOM)
+
+        # Compute rewards in batches on CPU (to avoid OOM)
         rewards_list = []
         gt_batch_cpu = gt_5d.cpu()
-        
+
         with torch.no_grad():
             for i in range(num_variants):
-                # 取出一個變體: (1, 1, T, J, 3)
+                # Extract a single variant: (1, 1, T, J, 3)
                 v_batch = variants_TK[i:i+1].reshape(1, 1, variants_TK.shape[1], self.joints, 3)
-                
-                # 計算 Reward (Model 與 Data 都在 CPU)
+
+                # Compute reward (both model and data on CPU)
                 r, _ = reward_model(v_batch, gt_batch_cpu)
                 rewards_list.append(r.item())
                 
@@ -206,20 +206,20 @@ class RLVisualizer:
         top_k = 2
         bot_k = 2
 
-        # 排序
+        # Sort
         sorted_idx = np.argsort(rewards)
-        best_idx = sorted_idx[-top_k:][::-1] # 取最高分 (Top 2)
-        worst_idx = sorted_idx[:bot_k]       # 取最低分 (Bot 2)
-        
-        # 收集軌跡資料
+        best_idx = sorted_idx[-top_k:][::-1] # take the highest scores (Top 2)
+        worst_idx = sorted_idx[:bot_k]       # take the lowest scores (Bot 2)
+
+        # Collect trajectory data
         trajectories = []
-        offset_step = 0.5 # 每個軌跡在 X 軸的偏移量，避免重疊
-        
-        # 1. 低分變體 (Bot K) - 綠色系，由左至右：Bot-1 (最左, -1.0) -> Bot-2 (次左, -0.5)
+        offset_step = 0.5 # X-axis offset applied to each trajectory, to avoid overlap
+
+        # 1. Low-score variants (Bot K) - green shades, left to right: Bot-1 (leftmost, -1.0) -> Bot-2 (next, -0.5)
         bot_colors = ["lime", "yellowgreen"]
         for i, idx in enumerate(worst_idx):
             data = variants[idx].detach().permute(1, 0).cpu().numpy().reshape(-1, self.joints, 3)
-            # worst_idx[0] (Bot-1) 偏移 -1.0; worst_idx[1] (Bot-2) 偏移 -0.5
+            # worst_idx[0] (Bot-1) offset -1.0; worst_idx[1] (Bot-2) offset -0.5
             off = np.array([-(bot_k - i) * offset_step, 0, 0])
             color = bot_colors[i]
             alpha = 0.4 if i == 0 else 0.55
@@ -231,14 +231,14 @@ class RLVisualizer:
                 "raw_reward": rewards[idx], "advantage": advantages[idx]
             })
 
-        # 2. 真實動作 (GT) - 藍色 (0.0)
+        # 2. Ground-truth motion (GT) - blue (0.0)
         gt_data = self.fixed_sample["raw_pose_T_K"].reshape(-1, self.joints, 3)
         trajectories.append({
             "data": gt_data, "color": "blue", "alpha": 1.0, 
             "label": "GT (Ground Truth)", "linewidth": 2.0, "offset": np.array([0, 0, 0])
         })
 
-        # 3. 純預測 (Pure Prediction) - 紅色 (稍微偏右，0.25)
+        # 3. Pure Prediction - red (offset slightly to the right, 0.25)
         if pure_pred is not None:
             if pure_pred.device != torch.device("cpu"):
                 pure_pred = pure_pred.detach().cpu()
@@ -249,13 +249,13 @@ class RLVisualizer:
                 "label": "Pure Pred (Mean)", "linewidth": 2.0, "offset": off
             })
         
-        # 4. 高分變體 (Top K) - 綠色系，由左至右：Top-2 (次右, 0.5) -> Top-1 (最右, 1.0)
-        top_colors = ["green", "darkgreen"] # Top-2 為 green, Top-1 為 darkgreen
-        # 為了空間順序由左至右，先放 Top-2 (i=1) 再放 Top-1 (i=0)
+        # 4. High-score variants (Top K) - green shades, left to right: Top-2 (next-to-rightmost, 0.5) -> Top-1 (rightmost, 1.0)
+        top_colors = ["green", "darkgreen"] # Top-2 is green, Top-1 is darkgreen
+        # To keep left-to-right spatial order, place Top-2 (i=1) first, then Top-1 (i=0)
         for i in reversed(range(top_k)):
             idx = best_idx[i]
             data = variants[idx].detach().permute(1, 0).cpu().numpy().reshape(-1, self.joints, 3)
-            # Top-2 (i=1) 偏移 0.5; Top-1 (i=0) 偏移 1.0
+            # Top-2 (i=1) offset 0.5; Top-1 (i=0) offset 1.0
             off = np.array([(top_k - i) * offset_step, 0, 0])
             color = top_colors[i]
             alpha = 0.65 if i == 1 else 0.8
@@ -355,7 +355,7 @@ class RLVisualizer:
         # `model_input = (1 - cond_mask) * noisy_data + cond_mask * observed_data`
         # If `cond_mask` is 0, it uses `noisy_data` (generated).
         # So we definitely want to visualize the model generating FROM scratch? 
-        # USER said: "後40frame炸開". Before that should be GT?
+        # USER said: "the last 40 frames blow up". Before that should be GT?
         # If we pass `gen_mask` as all zeros, the model regenerates 0-30 too?
         # Let's check `load_fixed_sample`:
         # `gen_mask = torch.zeros_like(mask)`
@@ -366,10 +366,10 @@ class RLVisualizer:
         # Setup Figure once
         fig = plt.figure(figsize=(12, 8)) # Wider for legend
         ax = fig.add_subplot(111, projection='3d') 
-        # But user also mentioned "畫出座標軸和scale". 
-        # Let's stick to 2D for clarity if user wants "XY plane front view", 
-        # BUT 3D is better for "slightly tilted". 
-        # User said: "正對面(XY平面) + 稍微傾斜的3D視角" -> 3D Plot with fixed ViewInit.
+        # But user also mentioned "draw the axes and scale".
+        # Let's stick to 2D for clarity if user wants "XY plane front view",
+        # BUT 3D is better for "slightly tilted".
+        # User said: "straight-on (XY plane) + slightly tilted 3D view" -> 3D Plot with fixed ViewInit.
         
         # Determine strict bounds to prevent camera jumping
         # Use GT to define "normal" bounds, maybe expand slightly

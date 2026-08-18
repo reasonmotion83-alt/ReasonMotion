@@ -2,12 +2,12 @@ defaults:
   - dataset: finefs
   - _self_
 
-sft_dir: "" # 必須由命令列提供，例如 python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
-sft_ckpt: null # 可以指定特定的 SFT Checkpoint 檔名或模糊比對子字串 (如 sft_ckpt="epoch=50")
+sft_dir: "" # Must be provided on the command line, e.g. python train_rl.py sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
+sft_ckpt: null # Can specify a specific SFT checkpoint filename or a fuzzy-matched substring (e.g. sft_ckpt="epoch=50")
 
 quick_test: false
 
-# 覆蓋 SFT 階段的訓練參數
+# Override training parameters from the SFT stage
 training:
   lr: 5e-6
   epochs: 50
@@ -15,12 +15,12 @@ training:
   batch_size_test: 1
   valid_epoch_interval: 1
   grad_clip: 1.0
-  save_top_k: -1            # 儲存 Checkpoint 的數量限制 (-1 代表儲存全部，方便觀察流變)
-  val_check_interval: 30    # 每 30 個 step (batch) 進行一次驗證與視覺化
-  log_every_n_steps: 10     # 每 10 個 step 記錄一次指標
-  limit_val_batches: 5      # 限制 validation 的 batch 數量，加速驗證過程
+  save_top_k: -1            # Limit on the number of checkpoints to save (-1 means save all, for tracking training dynamics)
+  val_check_interval: 30    # Run validation and visualization every 30 steps (batches)
+  log_every_n_steps: 10     # Log metrics every 10 steps
+  limit_val_batches: 5      # Limit the number of validation batches to speed up validation
 
-# RL 專屬設定
+# RL-specific settings
 rl:
   lr_schedule:
     type: step
@@ -33,25 +33,25 @@ rl:
   num_samples_per_prompt: 16
   sampling_std: 1.0
   
-  # Reward 權重
+  # Reward weights
   w_gt: 0.0
   w_smooth: 0.1
   w_score: 0.9
   fs_reward_ckpt: "./utils/fs_reward_utils/checkpoints_goe/best_model_goe.pth"
-  
+
   smooth_floor: 0.0
   smooth_floor_penalty: 0.0
-  
+
   # Reference Update
-  update_ref_every_epoch: 2    # 每 1 個 Epoch 結束後更新一次
-  ref_ema_alpha: 0.5           # EMA 更新率 (0.01 = 每次吸收 1% 新權重, 1.0 = 硬拷貝)
-  
-  # Delayed Sub-Trajectory (連續/離散混合採樣機制)
+  update_ref_every_epoch: 2    # Update once after every 1 epoch
+  ref_ema_alpha: 0.5           # EMA update rate (0.01 = absorb 1% new weights each time, 1.0 = hard copy)
+
+  # Delayed Sub-Trajectory (continuous/discrete hybrid sampling mechanism)
   delayed_sub_trajectory:
     enabled: true
-    sampling_mode: discrete    # 'continuous' (隨機窗口) | 'discrete' (離散均勻隨機)
-    window_size: 5             # 連續模式下的窗口大小
-    num_discrete_steps: 5      # 離散模式下隨機抽幾步
+    sampling_mode: discrete    # 'continuous' (random window) | 'discrete' (discrete uniform random)
+    window_size: 5             # Window size in continuous mode
+    num_discrete_steps: 5      # Number of steps randomly sampled in discrete mode
 
   # Ablation Study switches for 5 improvements
   ablation:
@@ -76,21 +76,21 @@ rl:
       enabled: false
       ratio: 0.5
 
-# PyTorch Lightning 系統設定
+# PyTorch Lightning system settings
 system:
   accelerator: "gpu"
-  devices: [1,2]            # RL 階段獨立指定的 GPU 裝置
+  devices: [1,2]            # GPU devices specifically assigned for the RL stage
   strategy: "ddp_find_unused_parameters_true"
   precision: "32-true"
   seed: 42
 
 exp_name: "rl"
 
-# 覆寫 Hydra 預設的輸出目錄命名規則，統一為單一的 outputs/rl_finefs_YYYY-MM-DD_HH-MM
+# Override Hydra's default output directory naming scheme, unified to outputs/rl_finefs_YYYY-MM-DD_HH-MM
 hydra:
   run:
     dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}
 
-# 資料集覆蓋設定
+# Dataset override settings
 dataset:
-  filter_single_rotation: true  # 是否過濾單圈跳（1A/1Lz 等雜訊多之樣本）
+  filter_single_rotation: true  # Whether to filter out single-rotation jumps (noisy samples such as 1A/1Lz)

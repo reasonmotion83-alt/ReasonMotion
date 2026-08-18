@@ -565,7 +565,7 @@ def expmap2rotmat_torch(r):
     :param r: N x 3
     :return: N x 3 x 3
     """
-    device = r.device  # 確保所有 tensor 都和 r 在同一個裝置
+    device = r.device  # Ensure all tensors are on the same device as r
     theta = torch.norm(r, dim=1)
     r0 = torch.div(r, theta.unsqueeze(1).repeat(1, 3) + 1e-7)
 

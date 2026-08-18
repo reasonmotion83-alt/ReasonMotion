@@ -2,12 +2,12 @@ defaults:
   - dataset: h36m
   - _self_
 
-sft_dir: "" # 必須由命令列提供，例如 python train_rl.py sft_dir=outputs/sft_h36m_YYYY-MM-DD_HH-MM
-sft_ckpt: null # 可以指定特定的 SFT Checkpoint 檔名或模糊比對子字串 (如 sft_ckpt="epoch=50")
+sft_dir: "" # Must be provided on the command line, e.g. python train_rl.py sft_dir=outputs/sft_h36m_YYYY-MM-DD_HH-MM
+sft_ckpt: null # Can specify a specific SFT checkpoint filename or a fuzzy-matched substring (e.g. sft_ckpt="epoch=50")
 
 quick_test: false
 
-# 覆蓋 SFT 階段的訓練參數
+# Override training parameters from the SFT stage
 training:
   lr: 5e-6
   epochs: 50
@@ -20,7 +20,7 @@ training:
   log_every_n_steps: 10
   limit_val_batches: 5
 
-# RL 專屬設定 (H36M)
+# RL-specific settings (H36M)
 rl:
   lr_schedule:
     type: step
@@ -33,7 +33,7 @@ rl:
   num_samples_per_prompt: 16
   sampling_std: 1.0
   
-  # H36M Reward 權重：只用 GT + Smooth（無花滑評分模型）
+  # H36M reward weights: GT + Smooth only (no figure-skating scoring model)
   w_gt: 0.8
   w_smooth: 0.2
   w_score: 0.0
@@ -45,8 +45,8 @@ rl:
   # Reference Update
   update_ref_every_epoch: 2
   ref_ema_alpha: 0.5
-  
-  # Delayed Sub-Trajectory (連續/離散混合採樣機制)
+
+  # Delayed Sub-Trajectory (continuous/discrete hybrid sampling mechanism)
   delayed_sub_trajectory:
     enabled: true
     sampling_mode: discrete
@@ -76,7 +76,7 @@ rl:
       enabled: false
       ratio: 0.5
 
-# PyTorch Lightning 系統設定
+# PyTorch Lightning system settings
 system:
   accelerator: "gpu"
   devices: [0, 1]

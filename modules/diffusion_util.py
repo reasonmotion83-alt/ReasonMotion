@@ -15,8 +15,8 @@ def get_torch_trans_moe(heads=8, layers=1, channels=64, num_experts=4, top_k=2, 
     """Create a TransformerEncoder with MoE FFN.
 
     moe_type:
-        - "qwen": 使用原本自訂的 Qwen-style MoE (舊版行為)
-        - "tutel": 使用 Tutel 的 moe_layer 實作
+        - "qwen": use the original custom Qwen-style MoE (legacy behavior)
+        - "tutel": use Tutel's moe_layer implementation
     """
     print(f"MoE torch transformer (type={moe_type})")
     encoder_layer = MoETransformerEncoderLayer(
@@ -111,12 +111,12 @@ class diff_CSDI(nn.Module):
 
     def forward(self, x, cond_info, diffusion_step, text_emb=None):
         # 1, 2, 72, 70
-        # Channel 0 → 有觀測資料（GT）
-		# Channel 1 → 要預測區域（含噪）
+        # Channel 0 → observed data (GT)
+		# Channel 1 → region to predict (contains noise)
 
         B, inputdim, K, L = x.shape
         # print("x shape:", x.shape)
-        # print("x : ", x[:,0,:, 30:])  # 移到 CPU 且轉 numpy
+        # print("x : ", x[:,0,:, 30:])  # move to CPU and convert to numpy
         
         x = x.reshape(B, inputdim, K * L)
         x = self.input_projection(x)
@@ -139,11 +139,11 @@ class diff_CSDI(nn.Module):
 
     def get_load_balancing_loss(self):
         """
-        收集所有 MoE 層的 load balancing loss
+        Collect the load balancing loss from every MoE layer
         """
         total_loss = 0.0
         count = 0
-        total_fi = None  # 延遲初始化，自動匹配 num_experts 與 device
+        total_fi = None  # lazily initialized, automatically matches num_experts and device
         for layer in self.residual_layers:
             if hasattr(layer, 'time_layer') and hasattr(layer.time_layer, 'layers'):
                 for transformer_layer in layer.time_layer.layers:
@@ -166,7 +166,7 @@ class diff_CSDI(nn.Module):
                         count += 1
 
         if count == 0:
-            # 沒有 MoE 層，回傳零損失
+            # No MoE layers, return zero loss
             return torch.tensor(0.0), torch.zeros(1)
 
         return total_loss / count, total_fi / count
@@ -190,12 +190,12 @@ class ResidualBlock(nn.Module):
             )
             self.norm = nn.LayerNorm(channels)
 
-        # moe 參數向後相容：
-        #   - False / 0  : 完全不用 MoE（舊行為）
-        #   - True / 1   : 使用舊版 Qwen-style MoE
-        #   - "qwen"     : 明確指定 Qwen-style MoE
-        #   - "tutel"    : 使用 Tutel 實作的 MoE
-        #   - "fairscale": 使用 Fairscale 的 GShard Top-2 MoE
+        # moe parameter backward compatibility:
+        #   - False / 0  : MoE disabled entirely (legacy behavior)
+        #   - True / 1   : use the legacy Qwen-style MoE
+        #   - "qwen"     : explicitly specify Qwen-style MoE
+        #   - "tutel"    : use the Tutel MoE implementation
+        #   - "fairscale": use Fairscale's GShard Top-2 MoE
         moe_type = "qwen"
         use_moe = False
         if isinstance(moe, bool):
@@ -204,7 +204,7 @@ class ResidualBlock(nn.Module):
             moe_type = moe
             use_moe = True
         else:
-            # 其他數值型別，非 0 視為開啟 MoE
+            # Other numeric types, non-zero is treated as enabling MoE
             try:
                 use_moe = bool(moe)
             except Exception:
@@ -236,8 +236,8 @@ class ResidualBlock(nn.Module):
         self.time_mask = torch.triu(torch.ones(200, 200) * float('-inf'), diagonal=1)
 
         # --- Temporal Decay Mask (GAtFuN-inspired logistic decay) ---
-        # 透過 additive mask log(σ(β - α|i-j|)) = -softplus(α|i-j| - β)
-        # 讓 temporal attention 偏好相近幀，α 控制衰減陡度，β 控制偏移
+        # Via the additive mask log(σ(β - α|i-j|)) = -softplus(α|i-j| - β)
+        # this biases temporal attention toward nearby frames; α controls the decay steepness, β controls the offset
         self.temporal_decay = temporal_decay
         if temporal_decay:
             self.decay_alpha = nn.Parameter(torch.tensor(1.0))
@@ -256,7 +256,7 @@ class ResidualBlock(nn.Module):
         if self.text_mode == "decoupled_cross_attn" and text_emb is not None:
             tok_emb, tok_mask = text_emb
             mem = self.text_proj(tok_emb)  # (B, num_tokens, C)
-            # 展開以對應 B*K
+            # Expand to match B*K
             mem = mem.unsqueeze(1).expand(B, K, -1, C).reshape(B * K, -1, C)
             mask_exp = tok_mask.unsqueeze(1).expand(B, K, -1).reshape(B * K, -1)
             

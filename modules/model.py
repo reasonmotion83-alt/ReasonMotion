@@ -10,12 +10,12 @@ class ModelMain(nn.Module):
         self.device = device
         self.target_dim = target_dim
         
-        # 讀取擴散模型設定
+        # Load diffusion model settings
         diff_cfg = config["diffusion"]
         self.is_unconditional = bool(diff_cfg["is_unconditional"])
         self.time_step = 0
-        
-        # ---- Embedding: 時間位置編碼 + joint ID 編碼 ----
+
+        # ---- Embedding: time positional encoding + joint ID encoding ----
         self.emb_time_dim = diff_cfg["timeemb_dim"]
         self.emb_feature_dim = diff_cfg["featureemb_dim"]
         self.emb_total_dim = self.emb_time_dim + self.emb_feature_dim
@@ -28,7 +28,7 @@ class ModelMain(nn.Module):
         rl_config = config.get("rl", {})
         self.sampling_std = float(rl_config.get("sampling_std", 0.05))
 
-        # ---- MoE 設定 ----
+        # ---- MoE settings ----
         moe_cfg = config.get("moe", {})
         self.balancing_loss = moe_cfg.get("balance_loss", False)
         self.balance_loss_weight = moe_cfg.get("balance_loss_weight", 0.01)
@@ -38,7 +38,7 @@ class ModelMain(nn.Module):
         if self.use_r3:
             print("[R3] Strategy C enabled — two-pass detached routing replay")
 
-        # ---- Diffusion 主體 ----
+        # ---- Diffusion backbone ----
         cfg_diff = diff_cfg.copy()
         cfg_diff["side_dim"] = self.emb_total_dim
         cfg_diff["textemb"] = config["textemb_dim"]
@@ -84,10 +84,10 @@ class ModelMain(nn.Module):
         return samples, pose, (1 - mask), tp
 
     def get_distribution(self, text_emb, batch, t, noisy_data=None):
-        """計算並回傳 Normal 分佈 (用於 GRPO single-step)。
+        """Compute and return the Normal distribution (used for GRPO single-step).
 
         Args:
-            noisy_data: 若提供則直接使用，否則自動從 t 生成雜訊。
+            noisy_data: If provided, used directly; otherwise noise is generated automatically from t.
         """
         observed_data, observed_tp, gt_mask = self.process_data(batch)
         side_info = self.get_side_info(observed_tp, gt_mask)
@@ -118,14 +118,14 @@ class ModelMain(nn.Module):
         return torch.distributions.Normal(mean, std)
 
     def get_n_log_prob(self, dist, samples):
-        """計算 G 個 samples 在 dist 下的 log-prob，用於 GRPO policy loss。
+        """Compute the log-prob of G samples under dist, used for GRPO policy loss.
 
         Args:
             dist   : Normal(mean (B, frames, joints, 3), std)
             samples: (B, G, frames, joints, 3)
 
         Returns:
-            (B, G) 平均 log prob
+            (B, G) averaged log prob
         """
         mean = dist.loc.unsqueeze(1)   # (B, 1, frames, joints, 3)
         std  = dist.scale.unsqueeze(1)
@@ -135,7 +135,7 @@ class ModelMain(nn.Module):
         return log_prob.sum(dim=(-3, -2, -1)) / num_elements  # (B, G)
 
     def sample_n(self, text_emb, batch, t, G):
-        """Single-step: 生成 G 個 samples 及對應 distribution。
+        """Single-step: generate G samples and the corresponding distribution.
 
         Returns:
             samples: (B, G, frames, joints, 3)
@@ -145,7 +145,7 @@ class ModelMain(nn.Module):
         samples = dist.rsample((G,)).permute(1, 0, 2, 3, 4)  # (B, G, frames, joints, 3)
         return samples, dist
 
-    # ====================== 核心模組 ==========================
+    # ====================== Core modules ==========================
 
     # ---- R3 (Strategy C) helpers ----
 
@@ -257,12 +257,12 @@ class ModelMain(nn.Module):
         pred_eps = self.diffmodel(inp, side, t, text_emb=text_emb)
         # exit(0)
 
-        # 主要的重建損失
+        # Main reconstruction loss
         reconstruction_loss = ((noise - pred_eps) * (1 - cond_mask)).pow(2).sum()
         denom = (1 - cond_mask).sum().clamp(min=1)
         reconstruction_loss = reconstruction_loss / denom
         total_loss = reconstruction_loss
-        # MoE load balancing loss (如果存在)
+        # MoE load balancing loss (if present)
         if self.balancing_loss:
             if hasattr(self.diffmodel, 'get_load_balancing_loss'):
                 load_balancing_loss, _total_fi = self.diffmodel.get_load_balancing_loss()
@@ -275,8 +275,8 @@ class ModelMain(nn.Module):
         """Full denoising chain.
 
         Args:
-            noisy_data: (B, K, L) or (B, n, K, L) — 若給定則以此為初始雜訊。
-            sample    : 是否在每步加入隨機雜訊（True = 標準 DDPM）。
+            noisy_data: (B, K, L) or (B, n, K, L) — if given, used as the initial noise.
+            sample    : whether to add random noise at each step (True = standard DDPM).
         """
         B, K, L = x0.shape
         device = x0.device
@@ -338,10 +338,10 @@ class ModelMain(nn.Module):
     # ====================== GRPO / Trajectory ==========================
 
     def sample_trajectory(self, text_emb, batch, G, return_step_log_probs=False, active_timesteps=None, diffmodel_hook=None):
-        """全去噪鏈取樣，回傳 G 條軌跡供 GRPO 使用。
+        """Sample the full denoising chain, returning G trajectories for GRPO use.
 
-        當 ``use_r3=True`` 時，額外收集每步的 MoE routing 決策，
-        供 ``backprop_trajectory_loss`` 在 Pass 2 做 R3 replay。
+        When ``use_r3=True``, additionally collect the MoE routing decisions at
+        each step, for ``backprop_trajectory_loss`` to use in the Pass 2 R3 replay.
 
         Returns:
             final_samples  : (B, G, K, L)
@@ -351,11 +351,11 @@ class ModelMain(nn.Module):
             all_latents    : list[Tensor (B, G, K, L)], length = num_steps+1
                              [x_T, x_{T-1}, ..., x_0]
             all_routing    : list[dict] | None
-                             若 ``use_r3``，長度 = num_steps，迭代順序同 loop。
-                             index 0 = t=T-1，最後一筆 = deterministic t=0；
-                             log-prob / backprop 只使用 t=T-1...1。
-                             每個 dict: key → (N, 2) int64 detached tensor。
-                             若非 R3 模式，回傳 ``None``。
+                             If ``use_r3``, length = num_steps, in the same order as the loop.
+                             index 0 = t=T-1, last entry = deterministic t=0;
+                             log-prob / backprop only use t=T-1...1.
+                             Each dict: key → (N, 2) int64 detached tensor.
+                             If not in R3 mode, returns ``None``.
         """
         if active_timesteps is not None:
             active_timesteps = set(active_timesteps)
@@ -394,7 +394,7 @@ class ModelMain(nn.Module):
             else:
                 eps  = self.diffmodel(inp, side_rep, t_vec, text_emb=text_rep)
 
-            # R3: 收集本步 routing（推理 Pass 1）
+            # R3: collect this step's routing (inference Pass 1)
             if self.use_r3:
                 all_routing.append(self._collect_moe_routing())
 
@@ -428,7 +428,7 @@ class ModelMain(nn.Module):
                 x_t = mean.reshape(B, G, K, L)
 
             all_latents.append(x_t)
-            # 關鍵：截斷梯度，避免深度為 T 的計算圖
+            # Key: truncate the gradient to avoid a computation graph of depth T
             x_t = x_t.detach()
 
         final_samples = x_t * (1 - gt_mask.unsqueeze(1)) + observed_data.unsqueeze(1) * gt_mask.unsqueeze(1)
@@ -506,7 +506,7 @@ class ModelMain(nn.Module):
         return torch.stack(step_lps, dim=0)
 
     def get_trajectory_log_prob(self, all_latents, text_emb, batch):
-        """計算給定軌跡在本模型（作為 reference）下的 log-prob。
+        """Compute the log-prob of the given trajectory under this model (as reference).
 
         Args:
             all_latents: [x_T, ..., x_0], len = num_steps+1, each (B, G, K, L)
@@ -534,16 +534,21 @@ class ModelMain(nn.Module):
                                   ablation_cfg=None,
                                   pl_module=None):
         """Memory-efficient clipped GRPO/PPO backprop.
-        【記憶體拯救黑科技：逐步釋放梯度的工程實作】
-        正常來說，如果要反向傳播 50 步去噪過程，神經網路 (U-Net) 需要把 50 步的所有 Forward 
-        Activation (特徵圖) 全部存在顯存 (VRAM) 裡，這絕對會 OOM。
-        這裡我們用的「工程技巧`」是：
-        1. 在 forward (採樣) 時，使用 `x_t.detach()` 把每一步的計算圖切斷，只存下各步的數值。
-        2. 在這裡 backward 時，我們用 for 迴圈一次只重算一個 $t$ 步 of U-Net。
-        3. 算完這一步的 loss，**立刻呼叫 `.backward()`**。PyTorch 會把梯度累積在 `.grad` 中。
-        4. 然後 `del loss_step, ...` 清除這一步的計算圖與記憶體。
-        因為 Loss 總和的梯度 = 梯度的總和，這樣做我們只需消耗「1 次」U-Net forward 的顯存，
-        卻能完美算出 50 步的聯合梯度！
+        【Memory-saving engineering trick: releasing gradients step by step】
+        Normally, backpropagating through a 50-step denoising process would require the
+        neural network (U-Net) to keep all 50 steps' Forward Activations (feature maps)
+        entirely in VRAM, which would definitely OOM.
+        The "engineering trick" used here is:
+        1. During forward (sampling), use `x_t.detach()` to cut the computation graph at
+           each step, keeping only the values from each step.
+        2. Here, during backward, we use a for loop to recompute only one $t$ step of the
+           U-Net at a time.
+        3. Once this step's loss is computed, **immediately call `.backward()`**. PyTorch
+           accumulates the gradients in `.grad`.
+        4. Then `del loss_step, ...` frees this step's computation graph and memory.
+        Since the gradient of a sum of losses equals the sum of the gradients, this way we
+        only need to consume the VRAM for "1" U-Net forward pass, while still computing the
+        joint gradient over all 50 steps perfectly!
         """
         # Check if DDP is active and retrieve the no_sync context manager
         is_ddp = False
@@ -565,7 +570,7 @@ class ModelMain(nn.Module):
         alpha_hat = torch.tensor(self.alpha_hat, device=device).float()
         alpha     = torch.tensor(self.alpha,     device=device).float()
 
-        # detach() 是關鍵！確保條件輸入不會不小心拉起不需要的計算圖
+        # detach() is key! Ensures conditioning inputs don't accidentally drag in an unneeded computation graph
         side_rep = side_info.repeat_interleave(G, dim=0).detach()
         cond_rep = gt_mask.repeat_interleave(G, dim=0).detach()
         obs_rep  = observed_data.repeat_interleave(G, dim=0).detach()
@@ -591,7 +596,7 @@ class ModelMain(nn.Module):
         active_steps = len(active_timesteps) if active_timesteps is not None else (self.num_steps - 1)
 
         active_step_idx = 0
-        # 由 $t=50$ 倒推回 $t=1$，逐步計算並馬上反向傳播 (Backprop)
+        # Step backward from $t=50$ to $t=1$, computing and immediately backpropagating (Backprop) at each step
         for t in reversed(range(1, self.num_steps)):
             is_active = (t in active_timesteps) if active_timesteps is not None else True
             if not is_active:
@@ -602,7 +607,7 @@ class ModelMain(nn.Module):
             x_t    = all_latents[idx_curr]
             x_prev = all_latents[idx_next]
 
-            # 把採樣時存下來的 $x_t$ 拿出來，務必 detach() 確保沒有以前的計算圖
+            # Retrieve the $x_t$ saved during sampling, making sure to detach() so no stale computation graph remains
             x_t_flat = x_t.reshape(B * G, K, L).detach()
             inp  = self.set_input_to_diffmodel(x_t_flat, obs_rep, cond_rep)
             t_vec = torch.full((B * G,), t, dtype=torch.long, device=device)
@@ -611,10 +616,10 @@ class ModelMain(nn.Module):
             if all_routing is not None and routing_idx < len(all_routing):
                 self._inject_moe_routing(all_routing[routing_idx])
 
-            # 重新執行一次當前 step 的 U-Net 推論！(只有這裡會消耗 VRAM 並建立局部的計算圖)
+            # Re-run the U-Net inference for the current step! (only this consumes VRAM and builds a local computation graph)
             eps  = self.diffmodel(inp, side_rep, t_vec, text_emb=text_rep)
-            
-            # 利用網路預測的 eps，算出 $x_{t-1}$ 的高斯分佈平均值 (mean)
+
+            # Use the network-predicted eps to compute the mean of the Gaussian distribution for $x_{t-1}$
             c1   = 1 / alpha_hat[t].sqrt()
             c2   = (1 - alpha_hat[t]) / (1 - alpha[t]).sqrt()
             mean = c1 * (x_t_flat - c2 * eps)
@@ -622,18 +627,18 @@ class ModelMain(nn.Module):
             sigma = math.sqrt((1 - alpha[t - 1]) / (1 - alpha[t]) * self.beta[t]) * noise_scale
             x_prev_flat = x_prev.reshape(B * G, K, L).detach()
             
-            # --- 以下是計算 Log-Probability ---
-            # mse 代表神經網路預測的 mean，和「當初採樣時實際加上雜訊走的那條路 (x_prev)」的差距
+            # --- The following computes the Log-Probability ---
+            # mse represents the gap between the network-predicted mean and the actual noised path taken during sampling (x_prev)
             mse  = (x_prev_flat - mean) ** 2
-            
-            # 這是標準常態分佈 Log-Prob 的數學公式：-0.5 * (x - mu)^2 / sigma^2 - log(sigma) ...
+
+            # This is the standard Normal distribution Log-Prob formula: -0.5 * (x - mu)^2 / sigma^2 - log(sigma) ...
             lp_elem = -0.5 * mse / sigma ** 2 - math.log(sigma) - 0.5 * math.log(2 * math.pi)
-            
-            # 只針對我們要生成的目標部分 (future_mask) 算機率，除以數量做正規化
+
+            # Only compute probability over the target portion we want to generate (future_mask), normalizing by count
             lp = (lp_elem * future_mask).sum(dim=(1, 2)) / future_denom
             new_lp = lp.reshape(B, G)
 
-            # --- 計算 PPO / GRPO Surrogate Loss ---
+            # --- Compute PPO / GRPO Surrogate Loss ---
             adv_t = adv[active_step_idx] if adv.dim() == 3 else adv
             if ablation_cfg is not None:
                 decay_cfg = ablation_cfg.get("step_decay_advantage", {})
@@ -643,21 +648,21 @@ class ModelMain(nn.Module):
                     adv_t = adv_t * decay_weight
 
             if old_step_log_probs is None:
-                # 單純的 Policy Gradient: Loss = -LogProb * Advantage
+                # Plain Policy Gradient: Loss = -LogProb * Advantage
                 loss_step = -(new_lp * adv_t).mean()
             else:
-                # PPO 裁切機制 (Clipped Surrogate Objective)
+                # PPO clipping mechanism (Clipped Surrogate Objective)
                 old_lp = old_step_log_probs[active_step_idx].to(device).detach()
                 ratio = torch.exp(torch.clamp(new_lp - old_lp, min=-20.0, max=20.0))
-                
-                # 限制更新幅度在 [1-epsilon, 1+epsilon] 之間，防止一次更新把模型搞崩
+
+                # Limit the update magnitude to within [1-epsilon, 1+epsilon] to prevent a single update from destabilizing the model
                 clipped_ratio = torch.clamp(ratio, 1.0 - epsilon, 1.0 + epsilon)
-                
-                # 取較小的那個作為 surrogate loss
+
+                # Take the smaller of the two as the surrogate loss
                 surrogate = torch.minimum(ratio * adv_t, clipped_ratio * adv_t)
                 loss_step = -surrogate.mean()
 
-            # --- 加入 KL 散度懲罰 (KL Penalty) ---
+            # --- Add KL divergence penalty (KL Penalty) ---
             if ref_step_log_probs is not None and kl_coef > 0:
                 ref_lp = ref_step_log_probs[active_step_idx].to(device).detach()
                 log_ref_new = torch.clamp(ref_lp - new_lp, min=-20.0, max=20.0)
@@ -667,13 +672,13 @@ class ModelMain(nn.Module):
                     kl_loss = torch.clamp(kl_loss, max=max_kl_penalty)
                 loss_step = loss_step + kl_loss.mean()
 
-            # 平均攤提這 active_steps 步的 loss
+            # Average the loss over these active_steps steps
             loss_step = (loss_step / active_steps) * loss_scale
             
             # Check if this is the last active step in the loop
             is_last_step = (active_step_idx == active_steps - 1)
             
-            # ⭐️ 【核心技巧】：在迴圈內直接 Backward！
+            # ⭐️ 【Core trick】: Backward directly inside the loop!
             if backward_fn is not None:
                 if is_ddp and not is_last_step:
                     with no_sync_ctx():
@@ -687,11 +692,11 @@ class ModelMain(nn.Module):
                 else:
                     loss_step.backward()
 
-            # ⭐️ 【釋放記憶體】：把所有跟計算圖有關的暫存變數通通砍掉！
+            # ⭐️ 【Free memory】: drop every temporary variable tied to the computation graph!
             del loss_step, lp, new_lp, eps, mean, inp
             active_step_idx += 1
 
-    # ====================== 其他輔助 ==========================
+    # ====================== Other helpers ==========================
 
     def process_data(self, batch):
         device = self.current_device

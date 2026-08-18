@@ -22,15 +22,15 @@ class StepCorrectedCSVLogger(CSVLogger):
         super().log_metrics(metrics, step=step)
 
 
-# ----------------- 通用畫圖腳本 ----------------- #
+# ----------------- Generic plotting script ----------------- #
 def plot_3d_motion(pose_seq, edges, save_path=None, pause=0.001, fps=30, y_up=None):
     """
-    將 3D 骨架序列繪製並儲存為 mp4 或直接顯示。
-    pose_seq : (T, J, 3) 或 (T, J*3) 的 numpy array 或 tensor
-    edges    : list of tuple (i, j) 骨架連結關係
-    save_path: 輸出 mp4 的絕對或相對路徑 (例如 output/vis.mp4)
-    y_up     : True = Y 軸朝上 (H36M), False = Y 軸朝下 (FineFS/SMPL)
-               None = 自動偵測 (比較第一幀 Y 軸最大與最小值的 joint 高度)
+    Renders a 3D skeleton sequence and saves it as an mp4, or displays it directly.
+    pose_seq : a (T, J, 3) or (T, J*3) numpy array or tensor
+    edges    : list of tuple (i, j) skeleton connectivity
+    save_path: absolute or relative output path for the mp4 (e.g. output/vis.mp4)
+    y_up     : True = Y axis points up (H36M), False = Y axis points down (FineFS/SMPL)
+               None = auto-detect (compares the joint heights with max/min Y in the first frame)
     """
     if isinstance(pose_seq, torch.Tensor):
         pose_seq = pose_seq.detach().cpu().numpy()
@@ -43,25 +43,25 @@ def plot_3d_motion(pose_seq, edges, save_path=None, pause=0.001, fps=30, y_up=No
         J = pose_seq.shape[1]
         xyz = pose_seq
 
-    # 自動偵測座標系方向：
-    # Y-up (H36M): 頭部 Y > 腳部 Y，多數 joint (軀幹+手臂) 在 pelvis 上方
-    # Y-down (FineFS/SMPL): 頭部 Y < 腳部 Y，多數 joint 在 pelvis 下方
+    # Auto-detect coordinate system orientation:
+    # Y-up (H36M): head Y > foot Y, most joints (torso+arms) are above the pelvis
+    # Y-down (FineFS/SMPL): head Y < foot Y, most joints are below the pelvis
     if y_up is None:
         y_vals = xyz[0, :, 1]
         y_center = xyz[0, 0, 1]  # joint 0 = pelvis
-        # 用 median：站立人體中，多數 joint (軀幹+雙臂+頭) 在 pelvis 上方
-        # Y-up → median > center；Y-down → median < center
+        # Use the median: in a standing body, most joints (torso+both arms+head) are above the pelvis
+        # Y-up → median > center; Y-down → median < center
         y_up = np.median(y_vals) > y_center
 
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
     ax.view_init(elev=20, azim=45)
     ax.set_xlim([-1.2, 1.2])
-    ax.set_ylim([-1.2, 1.2])  # 為了讓比例正確
+    ax.set_ylim([-1.2, 1.2])  # to keep the aspect ratio correct
     ax.set_zlim([-0.6, 0.6])
     ax.set_axis_off()
     
-    # 畫個簡單的地板
+    # Draw a simple floor
     floor = 0.8
     ax.plot_surface(*np.meshgrid(np.linspace(-floor, floor, 2),
                                  np.linspace(-floor, floor, 2)),
@@ -73,7 +73,7 @@ def plot_3d_motion(pose_seq, edges, save_path=None, pause=0.001, fps=30, y_up=No
     def update_frame(t):
         pts = xyz[t]
         
-        # 座標軸映射：matplotlib 3D 的 Z 軸是畫面垂直方向
+        # Axis mapping: matplotlib 3D's Z axis is the vertical direction on screen
         # X_plot = X,  Y_plot = Z(depth),  Z_plot = ±Y(vertical)
         xs = pts[:, 0]
         ys = pts[:, 2]
@@ -187,7 +187,7 @@ def plot_grpo_batch_metrics(save_dir):
             
         x = df_train['step'].tolist()
         
-        # ========== 图1：Training Overview (Total Reward & KL) ==========
+        # ========== Figure 1: Training Overview (Total Reward & KL) ==========
         fig1, ax1 = plt.subplots(figsize=(12, 6))
         
         ax1.plot(x, df_train['train_r_total'], 'b-', label='Total Reward (Avg)', linewidth=2)
@@ -216,7 +216,7 @@ def plot_grpo_batch_metrics(save_dir):
         plt.savefig(loss_plot_path, dpi=150, bbox_inches='tight')
         plt.close(fig1)
         
-        # ========== 图2：Rewards ==========
+        # ========== Figure 2: Rewards ==========
         fig2, ax3 = plt.subplots(figsize=(12, 6))
         
         if 'train_r_gt' in df_train.columns:
@@ -238,7 +238,7 @@ def plot_grpo_batch_metrics(save_dir):
         plt.savefig(reward_plot_path, dpi=150, bbox_inches='tight')
         plt.close(fig2)
         
-        # ========== 图3：Critic Value Errors & Loss (DDPO) ==========
+        # ========== Figure 3: Critic Value Errors & Loss (DDPO) ==========
         if 'train_critic_loss' in df_train.columns or 'train_v_err_early_t35_50' in df_train.columns:
             fig3, ax4 = plt.subplots(figsize=(12, 6))
             
@@ -321,13 +321,13 @@ class VisualizationCallback(pl.Callback):
         else:
             self.val_epochs.append(epoch + 1)
         
-        # 1. 於驗證第一 Batch 計算更完整的量化與平滑度指標
+        # 1. Compute fuller quantitative & smoothness metrics on the first validation batch
         val_dataloader = trainer.val_dataloaders
         if val_dataloader is not None:
             if isinstance(val_dataloader, list) or isinstance(val_dataloader, tuple):
                 val_dataloader = val_dataloader[0]
             try:
-                # 這裡使用 iter/next 獲取驗證集的第一個 Batch
+                # Use iter/next here to fetch the first batch of the validation set
                 val_batch = next(iter(val_dataloader))
                 val_batch_device = {k: v.to(pl_module.device) if isinstance(v, torch.Tensor) else v 
                                     for k, v in val_batch.items()}
@@ -348,13 +348,13 @@ class VisualizationCallback(pl.Callback):
                 val_p_abs = val_samples[..., val_input_n:]
                 val_g_abs = val_gt[..., val_input_n:]
                 
-                # 計算 A-MPJPE & F-MPJPE
+                # Compute A-MPJPE & F-MPJPE
                 from utils.metrics import ampjpe, fmpjpe, compute_ldlj, compute_sparc
                 
                 epoch_ampjpe = float(ampjpe(val_p_abs, val_g_abs, val_p_abs.shape[2]).item())
                 epoch_fmpjpe = float(fmpjpe(val_p_abs, val_g_abs, val_p_abs.shape[2]).item())
                 
-                # 計算 LDLJ & SPARC
+                # Compute LDLJ & SPARC
                 pred_abs_np = val_p_abs[:, 0].transpose(-1, -2).cpu().numpy()
                 ldlj_sum, sparc_sum = 0.0, 0.0
                 fps = pl_module.config.dataset.get("fps", 30)
@@ -372,7 +372,7 @@ class VisualizationCallback(pl.Callback):
             except Exception as e:
                 print(f"[Warning] Failed to calculate val metrics on validation batch: {e}")
         
-        # 抽一個 sample 來評估與計算 smoothness
+        # Draw a sample to evaluate and compute smoothness
         motion_path = "/home/allen/datasets/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk"
         input_n = pl_module.config.dataset.get("input_n", 30)
         has_sample = False
@@ -443,7 +443,7 @@ class VisualizationCallback(pl.Callback):
             
             pred_pose = samples[0, 0].permute(1, 0) # (L, K)
             
-            # Calculate smoothness score (2階微分)
+            # Calculate smoothness score (2nd-order derivative)
             n_joints = pl_module.model.target_dim // 3
             pred_xyz = pred_pose.view(pred_pose.shape[0], n_joints, 3) # (L, J, 3)
             vel = torch.diff(pred_xyz, dim=0) # (L-1, J, 3)
@@ -460,7 +460,7 @@ class VisualizationCallback(pl.Callback):
             
         self.val_smooths.append(val_smooth_val)
         
-        # 畫圖與影片渲染只在 Rank 0 執行
+        # Plotting and video rendering run only on Rank 0
         if trainer.is_global_zero:
             loss_plot_path = os.path.join(trainer.logger.save_dir, "loss_curve.png")
             plot_loss_curve(self.train_epochs, self.train_losses, self.val_epochs, self.val_losses, loss_plot_path, val_smooths=self.val_smooths)
@@ -478,7 +478,7 @@ class VisualizationCallback(pl.Callback):
                     video_path = os.path.join(video_dir, f"step_{trainer.global_step:06d}_pred.mp4")
                 else:
                     video_path = os.path.join(video_dir, f"epoch_{(epoch + 1):04d}_pred.mp4")
-                # 根據 dataset 決定座標系方向與播放 FPS：H36M = Y-up, Boxing = 60 FPS, FineFS/SMPL = 30 FPS
+                # Determine coordinate system orientation and playback FPS based on dataset: H36M = Y-up, Boxing = 60 FPS, FineFS/SMPL = 30 FPS
                 ds_name = pl_module.config.dataset.get("name", "").lower()
                 vis_y_up = True if ds_name == "h36m" else False
                 vis_fps = pl_module.config.dataset.get("fps", 60 if ds_name == "boxing" else 30)

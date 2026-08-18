@@ -1,16 +1,16 @@
 name: "sft_baseline"
 
-# 1. 核心文字注入策略 (保留最關鍵的實驗)
+# 1. Core text-injection strategy (keeping only the most critical experiments)
 text_encoder: "sentence-transformer"
 textemb_dim: 384
-# 文字注入模式 (text_mode) 支援的選項：
-# - cross_attn: 原版作法。將 (K*L) 空間與時間完全攤平成超長序列去與文字做全局 Attention，計算量最大。
-# - decoupled_cross_attn: 解耦作法。只在 forward_time 的階段讓時間軸 (L) 去對齊文字，運算速度快且符合動作描述的時間特性。
-# - adaln: Adaptive LayerNorm (類似 Sora / DiT)。利用文字全局特徵直接進行 scale/shift，無 Attention 運算，收斂最快、CFG 訊號穿透最強。
-# - token: (保留舊版選項) 直接當作特徵 token 參與拼接運算。
+# Options supported by the text injection mode (text_mode):
+# - cross_attn: The original approach. Fully flattens the (K*L) spatial and temporal dims into an extremely long sequence for global attention with text; the most computationally expensive.
+# - decoupled_cross_attn: A decoupled approach. Only aligns the time axis (L) with the text during the forward_time stage; faster and better matches the temporal nature of motion descriptions.
+# - adaln: Adaptive LayerNorm (similar to Sora / DiT). Uses the global text feature directly for scale/shift, with no attention computation; fastest convergence and strongest CFG signal penetration.
+# - token: (legacy option, kept for compatibility) Directly treated as a feature token participating in concatenation.
 text_mode: "adaln"
 
-# 2. 擴散模型基礎架構
+# 2. Diffusion model base architecture
 diffusion:
   channels: 64
   layers: 12
@@ -24,7 +24,7 @@ diffusion:
   schedule: "cosine"
   is_unconditional: 0
 
-# 3. MoE 輔助實驗 (SFT 預設全關，保持純淨 baseline)
+# 3. MoE auxiliary experiments (all disabled by default for SFT, to keep a clean baseline)
 moe:
   enabled: false
   multirouter: false
@@ -32,4 +32,4 @@ moe:
   balance_loss: false
   balance_loss_weight: 0.01
 
-# 註：已移除原始 codebase 中未使用到的幽靈參數 (如 decouple_spatial_temporal, use_rot_loss 等)
+# Note: removed unused "ghost" parameters from the original codebase (e.g. decouple_spatial_temporal, use_rot_loss, etc.)

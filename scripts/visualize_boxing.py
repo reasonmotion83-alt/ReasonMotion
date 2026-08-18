@@ -64,7 +64,7 @@ def render_boxing_comparison_mp4(gt_pose, pred_pose, text_name, output_mp4, fps=
     plt.close(fig)
     os.makedirs(os.path.dirname(output_mp4), exist_ok=True)
     imageio.mimsave(output_mp4, frames, fps=fps)
-    print(f"✅ 渲染完成: {output_mp4}")
+    print(f"✅ Rendering complete: {output_mp4}")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -83,7 +83,7 @@ def main():
     ckpt_dir = os.path.join(exp_dir, "checkpoints")
     ckpts = glob.glob(os.path.join(ckpt_dir, "*.ckpt"))
     if not ckpts:
-        print(f"❌ 找不到 checkpoint 在 {ckpt_dir}")
+        print(f"❌ No checkpoint found in {ckpt_dir}")
         return
 
     def get_epoch_num(path):
@@ -105,7 +105,7 @@ def main():
         if target_ckpt is None:
             target_ckpt = sorted_ckpts[-1]
         
-    print(f"📦 載入 Checkpoint: {target_ckpt}")
+    print(f"📦 Loading checkpoint: {target_ckpt}")
     device = torch.device(args.device)
     
     system = SFTSystem(config=config, target_dim=25 * 3)
@@ -114,7 +114,7 @@ def main():
     system.to(device)
     system.eval()
     
-    # 載入 Boxing 測試集 (split=2)
+    # Load the Boxing test set (split=2)
     test_ds = BoxingDataset(
         data_dir=config.dataset.data_dir,
         input_n=config.dataset.input_n,
@@ -129,7 +129,7 @@ def main():
     out_dir = os.path.join(exp_dir, "visualize_samples", f"epoch_{ep_num:03d}")
     os.makedirs(out_dir, exist_ok=True)
     
-    print(f"🚀 開始為 Boxing 測試集 (Checkpoint Epoch {ep_num}) 產生 {args.num_samples} 筆視覺化樣本...")
+    print(f"🚀 Generating {args.num_samples} visualization samples for the Boxing test set (Checkpoint Epoch {ep_num})...")
     
     sample_cnt = 0
     for batch_idx, batch in enumerate(loader):
@@ -162,7 +162,7 @@ def main():
         render_boxing_comparison_mp4(gt_pose_3d, pred_pose, motion_name, mp4_path, fps=args.fps)
         sample_cnt += 1
 
-    print(f"🎉 全部 {sample_cnt} 筆視覺化樣本處理完畢！結果歸檔於: {out_dir}")
+    print(f"🎉 All {sample_cnt} visualization samples processed! Results archived at: {out_dir}")
 
 if __name__ == "__main__":
     main()

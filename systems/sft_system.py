@@ -3,22 +3,22 @@ import torch
 from torch.optim import Adam
 from omegaconf import OmegaConf
 
-# 從複製過來的 modules 中引用模型
+# Import the model from the copied-over modules
 from modules.model import ModelMain
 from utils.text_encoder import TextEncoder
 
 class SFTSystem(pl.LightningModule):
     def __init__(self, config, target_dim: int = 72):
         super().__init__()
-        # 儲存 config 與 target_dim 以便 hparams 記錄
+        # Save config and target_dim so they get recorded in hparams
         self.save_hyperparameters(ignore=['config'])
         self.save_hyperparameters(config)
         self.config = config
         
-        # 為了與舊版 ModelMain 相容，將 Hydra DictConfig 轉為一般 Python dict
+        # For compatibility with the legacy ModelMain, convert the Hydra DictConfig into a plain Python dict
         cfg_dict = OmegaConf.to_container(config, resolve=True)
-        
-        # 根據 gen_type 或 model.name 切換底層生成架構
+
+        # Switch the underlying generative architecture based on gen_type or model.name
         gen_type = config.get("training", {}).get("gen_type", "ddpm")
         model_name = config.get("model", {}).get("name", "sft_baseline")
         if gen_type == "flow_matching" or model_name == "flow_matching":
@@ -28,17 +28,17 @@ class SFTSystem(pl.LightningModule):
             self.model = ModelMain(cfg_dict["model"], device=torch.device('cpu'), target_dim=target_dim)
 
         
-        # 初始化 Text Encoder (不參與梯度更新)
+        # Initialize the Text Encoder (does not participate in gradient updates)
         self.text_encoder = TextEncoder(device=torch.device('cpu'))
         self.text_encoder.eval()
         for param in self.text_encoder.parameters():
             param.requires_grad = False
 
     def forward(self, batch, is_train=False, force_dropout=False, force_shuffle=False):
-        # 如果 text_encoder 內部有 device 問題，可以在這裡更新
-        self.text_encoder.device = self.device 
-        
-        # 從 batch 中提取文字 (我們的 Dataset 都統一回傳 "motion_name")
+        # If text_encoder has an internal device issue, it can be updated here
+        self.text_encoder.device = self.device
+
+        # Extract text from the batch (our Datasets all uniformly return "motion_name")
         texts = batch.get("motion_name", ["unknown"] * batch["pose"].shape[0])
         
         if force_shuffle:
@@ -46,8 +46,8 @@ class SFTSystem(pl.LightningModule):
             texts = list(texts)
             random.shuffle(texts)
             
-        # TextEncoder 會回傳 (tok_emb, tok_mask) 的 tuple
-        # 我們直接把這個 tuple 傳給 ModelMain
+        # TextEncoder returns a (tok_emb, tok_mask) tuple
+        # We pass this tuple directly to ModelMain
         tok_emb, tok_mask = self.text_encoder(texts)
         
         if force_dropout:
@@ -57,7 +57,7 @@ class SFTSystem(pl.LightningModule):
         return self.model(batch, is_train=is_train, text_embedding=text_embedding)
 
     def training_step(self, batch, batch_idx):
-        # 讀取 CFG dropout 機率
+        # Read the CFG dropout probability
         cfg_prob = self.config.training.get("cfg_dropout_prob", 0.05)
         force_drop = (torch.rand(1).item() < cfg_prob)
         
@@ -66,17 +66,17 @@ class SFTSystem(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # 1. 正常 Loss
+        # 1. Normal Loss
         loss_main = self(batch, is_train=False)
         self.log('val_loss', loss_main, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
-        
-        # 2. CFG Robustness Check (評估模型依賴文字的程度)
+
+        # 2. CFG Robustness Check (evaluates how much the model relies on the text)
         with torch.no_grad():
             loss_shuf = self(batch, is_train=False, force_shuffle=True)
             loss_zero = self(batch, is_train=False, force_dropout=True)
-            
-        # 如果 r_shuf 或 r_zero 越高，代表神經網路發現「文字被亂換了」或者「沒有文字」時 loss 暴增
-        # 這意味著模型非常仰賴你的文字條件 (Conditioning Robustness 強)
+
+        # Higher r_shuf or r_zero means the neural network's loss spikes when it detects the text has been shuffled or is missing
+        # This means the model relies heavily on your text conditioning (strong Conditioning Robustness)
         r_shuf = loss_shuf / (loss_main + 1e-9)
         r_zero = loss_zero / (loss_main + 1e-9)
         

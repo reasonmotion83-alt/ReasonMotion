@@ -2,21 +2,21 @@ import os
 import warnings
 
 # ==========================================
-# 📊 檢視訓練曲線 (TensorBoard) 指令：
-# 開啟一個新的終端機，在專案根目錄下執行：
+# 📊 View training curves (TensorBoard) command:
+# Open a new terminal, and from the project root run:
 # tensorboard --logdir outputs --bind_all --port 6006
-# (這會自動載入所有在 outputs 資料夾下的訓練日誌)
+# (this will automatically load all training logs under the outputs folder)
 # ==========================================
 
-# 關閉 huggingface tokenizers 煩人的 fork 警告
+# Disable huggingface tokenizers' annoying fork warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# 關閉 TensorFlow 煩人的 C++ 日誌與 oneDNN 警告 (TensorBoardLogger 引入)
+# Disable TensorFlow's annoying C++ logs and oneDNN warnings (pulled in by TensorBoardLogger)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-# 忽略 PyTorch Lightning 關於 TextEncoder 在 eval mode 的警告
+# Ignore PyTorch Lightning's warning about TextEncoder being in eval mode
 warnings.filterwarnings("ignore", message=".*Found .* module.* in eval mode.*")
-# 忽略 Protobuf 版本不匹配的警告
+# Ignore the Protobuf version mismatch warning
 warnings.filterwarnings("ignore", message=".*Protobuf gencode version.*")
 
 import hydra
@@ -26,15 +26,15 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
-# 引用舊版的 Dataset (已從 motion_data 複製到 data 資料夾)
+# Import the legacy Dataset (already copied from motion_data to the data folder)
 from data.h36m_unified import H36MUnified
 from data.finefs import FineFS
 
-# 引用我們剛剛建立的 Lightning System
+# Import the Lightning System we just created
 from systems.sft_system import SFTSystem
 
 def build_dataset(cfg, split, data_ratio=1.0):
-    """根據 Dataset 設定建構相應的資料集"""
+    """Build the corresponding dataset based on the Dataset settings"""
     ds_name = cfg.dataset.name.lower()
     common_kw = dict(
         input_n    = cfg.dataset.input_n,
@@ -96,7 +96,7 @@ def build_dataset(cfg, split, data_ratio=1.0):
 def main(cfg: DictConfig):
     OmegaConf.set_readonly(cfg, False)
     
-    # 對齊 model.name 與 training.gen_type
+    # Align model.name with training.gen_type
     model_name = cfg.model.get("name", "sft_baseline")
     gen_type = cfg.training.get("gen_type", "ddpm")
     if model_name == "flow_matching" or gen_type == "flow_matching":
@@ -108,31 +108,31 @@ def main(cfg: DictConfig):
         cfg.training.epochs = 2
         cfg.training.valid_epoch_interval = 1
 
-    # 列印出最終解析好的 Config
+    # Print out the final resolved Config
     print("====== RUN CONFIGURATION ======")
     print(OmegaConf.to_yaml(cfg))
     print("===============================")
     
     pl.seed_everything(cfg.system.seed)
     
-    # 1. 建立 Dataset & DataLoader
+    # 1. Build Dataset & DataLoader
     train_ds, target_dim, _ = build_dataset(cfg, split=0)
     valid_ds, _, edges      = build_dataset(cfg, split=1)
     
     print(f"Train samples: {len(train_ds)}, Val samples: {len(valid_ds)}")
     print(f"Target Dimension: {target_dim}")
     
-    # 這裡可以根據硬體動態調整 num_workers，暫設為 4
+    # num_workers can be adjusted dynamically based on hardware; set to 4 for now
     train_loader = DataLoader(train_ds, batch_size=cfg.training.batch_size, shuffle=True, num_workers=4)
     valid_loader = DataLoader(valid_ds, batch_size=cfg.training.batch_size_test, shuffle=False, num_workers=4)
     
-    # 2. 建立 PyTorch Lightning 系統
+    # 2. Build the PyTorch Lightning system
     system = SFTSystem(config=cfg, target_dim=target_dim)
     
     from hydra.core.hydra_config import HydraConfig
     output_dir = HydraConfig.get().runtime.output_dir
     
-    # 3. 設定 回呼函數與 Logger
+    # 3. Set up callbacks and Logger
     ckpt_dir = os.path.join(output_dir, "checkpoints")
     is_moe = cfg.model.get("moe", {}).get("enabled", False)
     prefix = "moe_epoch" if is_moe else "sft_epoch"
@@ -156,7 +156,7 @@ def main(cfg: DictConfig):
     csv_logger = StepCorrectedCSVLogger(save_dir=output_dir, name="csv_logs", version="")
     
     logger_list = [tb_logger, csv_logger]
-    # 4. 啟動 Trainer
+    # 4. Launch the Trainer
     trainer = pl.Trainer(
         accelerator=cfg.system.accelerator,
         devices=cfg.system.devices,
@@ -169,7 +169,7 @@ def main(cfg: DictConfig):
         gradient_clip_val=cfg.training.grad_clip,
     )
     
-    # 開始訓練！
+    # Start training!
     trainer.fit(system, train_loader, valid_loader)
 
 if __name__ == "__main__":

@@ -1,31 +1,32 @@
 """
 FineFS Dataset loader – unified for both the DePOSit main model and the FS Reward Model.
 
-● 資料夾結構
+● Folder structure
 root/
 └── train | valid | test
-    └── 3A/                # 動作類別資料夾
+    └── 3A/                # motion category folder
         └── 3A_0001/
             ├── res_3A_0001.mp4
             ├── new_res.pk          # HybrIK skeleton (pred_xyz_24_struct[_global])
-            └── *_info.json         # 裁判分數 (judge_score / goe)
+            └── *_info.json         # judge score (judge_score / goe)
 
 ● mode
-    "full_name"     → 標籤=完整動作名稱 (e.g. "triple lutz + double toeloop combo")
-    "rotation"      → 只保留單跳；標籤=圈數  (single/double/triple/quadruple)
-    "combo_vs_solo" → 標籤=combo / solo
+    "full_name"     → label = full motion name (e.g. "triple lutz + double toeloop combo")
+    "rotation"      → keep single jumps only; label = number of rotations (single/double/triple/quadruple)
+    "combo_vs_solo" → label = combo / solo
 
-● 主模型 (DePOSit) 需要的欄位:
+● Fields required by the main model (DePOSit):
     pose (T, D_flat)  mask (T, D_flat)  timepoints (T,)  motion_name
 
-● Reward 模型 (FSRewardModel) 需要的欄位:
+● Fields required by the Reward model (FSRewardModel):
     pose (6, T, V)  motion_name  judge_score
 
-● 兩者統一用這一個 Dataset，各自只取自己要的 key 即可。
+● Both use this single unified Dataset; each just picks out the keys it needs.
 
 ● random_face=True
-    每次 __getitem__ 呼叫時，對整個 sliding window 沿垂直軸 (Y) 做隨機旋轉，
-    消除攝影機視角造成的落地方向偏見。建議 train=True, val/test=False。
+    On every __getitem__ call, applies a random rotation about the vertical axis (Y)
+    to the whole sliding window, removing the landing-direction bias introduced by
+    camera viewpoint. Recommended: train=True, val/test=False.
 """
 from __future__ import annotations
 import os, glob, pickle, json, re
@@ -35,7 +36,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-# ---------- 動作對應表 ---------- #
+# ---------- Motion name lookup table ---------- #
 MOTION_NAME_MAP = {
     "A": "axel", "T": "toeloop", "S": "salchow", "Lo": "loop",
     "F": "flip", "Lz": "lutz", "Eu": "euler",
@@ -58,9 +59,9 @@ BONE_LINKS: List[Tuple[int, int]] = [
 
 NUM_JOINTS = 24
 
-# ---------- 工具函式 ---------- #
+# ---------- Utility functions ---------- #
 def build_mask(in_n: int, out_n: int, dim: int) -> np.ndarray:
-    """簡單的 no_miss mask（主模型用）。"""
+    """Simple no_miss mask (used by the main model)."""
     m = np.zeros((in_n + out_n, dim), dtype=np.float32)
     m[:in_n] = 1
     return m
@@ -80,20 +81,22 @@ def expand_motion_name(code: str) -> str:
 
 def random_rotate_y(joint_data: np.ndarray) -> np.ndarray:
     """
-    對骨骼序列沿垂直軸 (Y) 做隨機旋轉。
+    Applies a random rotation about the vertical axis (Y) to a skeleton sequence.
 
-    滑冰動作的品質與落地方向無關，但攝影機視角會讓不同影片的
-    落地方向集中在特別的角度，導致模型對朝向產生偏見。
-    每次 __getitem__ 都隨機旋轉，迫使模型學習與方向無關的特徵。
+    Skating motion quality is independent of landing direction, but camera
+    viewpoint causes the landing direction across different videos to cluster
+    around particular angles, biasing the model toward orientation. Rotating
+    randomly on every __getitem__ call forces the model to learn
+    orientation-independent features.
 
     Args:
-        joint_data: (T, V, 3) – 全域關節座標，Y 軸為垂直方向
+        joint_data: (T, V, 3) – global joint coordinates, with Y as the vertical axis
     Returns:
         rotated (T, V, 3)
     """
     theta = np.random.uniform(0.0, 2.0 * np.pi)
     cos_t, sin_t = float(np.cos(theta)), float(np.sin(theta))
-    # 繞 Y 軸旋轉矩陣 (right-hand rule):
+    # Rotation matrix about the Y axis (right-hand rule):
     #  [ cos  0  sin ]
     #  [  0   1   0  ]
     #  [-sin  0  cos ]
@@ -119,15 +122,16 @@ class FineFS(Dataset):
                  downsample      : int   = 1,
                  move_global     : bool  = True,
                  max_len         : Optional[int] = None,
-                 random_face     : bool  = False,   # 隨機 Y 軸旋轉 augmentation
-                 reward_mode     : bool  = False,   # True → 回傳 bone feature + judge_score
-                 filter_single_rotation: bool = True):  # 過濾單圈跳（1A/1Lz 等雜訊樣本）
+                 random_face     : bool  = False,   # random Y-axis rotation augmentation
+                 reward_mode     : bool  = False,   # True → return bone feature + judge_score
+                 filter_single_rotation: bool = True):  # filter out single-rotation jumps (1A/1Lz etc., noisy samples)
         """
         Args:
-            random_face:  True 時每次 __getitem__ 對 sliding window 做隨機 Y 軸旋轉。
-                          建議 train split 開啟，val/test 關閉。
-            reward_mode:  True  → 回傳 pose=(6,T,V) tensor + judge_score (reward model 用)
-                          False → 回傳 pose=(T,D) ndarray + mask + timepoints (主模型用)
+            random_face:  When True, each __getitem__ call applies a random Y-axis
+                          rotation to the sliding window. Recommended on for the
+                          train split, off for val/test.
+            reward_mode:  True  → return pose=(6,T,V) tensor + judge_score (for the reward model)
+                          False → return pose=(T,D) ndarray + mask + timepoints (for the main model)
         """
         super().__init__()
         assert mode in ["full_name", "rotation", "combo_vs_solo"]
@@ -149,14 +153,14 @@ class FineFS(Dataset):
             raise FileNotFoundError(f"[Error] Data folder not found: {final_dir}")
         print(f"[Init] Data folder: {final_dir}")
 
-        # ===== 收集 pk 檔案 =====
+        # ===== Collect pk files =====
         files = glob.glob(os.path.join(final_dir, "*", "*", "new_res.pk"))
         print(f"[{split_name}] Total pk files found: {len(files)}")
 
         if mode == "rotation":
-            # 過濾 combo 跳（含 '+' 的都是 combo）
+            # Filter out combo jumps (anything containing '+' is a combo)
             files = [f for f in files if "+" not in os.path.basename(os.path.dirname(os.path.dirname(f)))]
-            # 過濾單圈跳（1A/1Lz 等雜訊多）— 由 filter_single_rotation 控制
+            # Filter out single-rotation jumps (1A/1Lz etc. tend to be noisy) — controlled by filter_single_rotation
             if filter_single_rotation:
                 files = [f for f in files
                          if not os.path.basename(os.path.dirname(os.path.dirname(f))).startswith("1")]
@@ -170,11 +174,11 @@ class FineFS(Dataset):
         if data_ratio < 1.0:
             print(f"[{split_name}] data_ratio={data_ratio:.2f} → keeping {keep_n}/{len(files)} files")
 
-        # ===== 讀取資料 & 建立滑動窗口 =====
+        # ===== Load data & build sliding windows =====
         self.p3d         : Dict[int, np.ndarray] = {}
         self.motion_labels: Dict[int, str]       = {}
         self.judge_scores : Dict[int, float]     = {}
-        self.file_paths   : Dict[int, str]       = {}   # debug 用
+        self.file_paths   : Dict[int, str]       = {}   # for debugging
         self.data_idx     : List[Tuple[int, int]] = []
 
         total_windows = 0
@@ -194,7 +198,7 @@ class FineFS(Dataset):
             if max_len is not None:
                 arr = arr[:max_len]
 
-            # 補長度
+            # Pad length
             if arr.shape[0] < self.seq_len:
                 pad_len = self.seq_len - arr.shape[0]
                 arr = np.concatenate([arr, np.repeat(arr[-1:], pad_len, axis=0)], 0)
@@ -215,7 +219,7 @@ class FineFS(Dataset):
             self.motion_labels[key] = label
             self.file_paths[key]    = pk
 
-            # Judge score（reward model 用；主模型用不到但不影響）
+            # Judge score (used by the reward model; unused by the main model but harmless)
             pk_dir = os.path.dirname(pk)
             info_files = [f for f in os.listdir(pk_dir) if f.endswith("_info.json")]
             score_val = 0.0
@@ -237,12 +241,12 @@ class FineFS(Dataset):
                     print(f"[Warning] Failed to read score from {pk}: {e}")
             self.judge_scores[key] = score_val
 
-            # 滑動窗口
+            # Sliding window
             if disable_sliding:
                 starts = [0]
             else:
                 starts = list(np.arange(0, arr.shape[0] - self.seq_len + 1, skip_rate))
-                #skip rate代表每隔幾幀取一個window
+                # skip_rate is the frame stride between successive windows
             if len(starts) == 0:
                 starts = [0]
 
@@ -253,7 +257,7 @@ class FineFS(Dataset):
         print(f"[Summary] Total sequences loaded: {key}")
         print(f"[Summary] Total sliding windows: {total_windows}")
 
-        # 標籤分佈
+        # Label distribution
         label_counts: Dict[str, int] = {}
         for k in self.motion_labels:
             lbl = self.motion_labels[k]
@@ -262,7 +266,7 @@ class FineFS(Dataset):
         for lbl, cnt in sorted(label_counts.items(), key=lambda x: -x[1]):
             print(f"  {lbl:<30}: {cnt}")
 
-        # 分數分佈（reward mode でよく使う）
+        # Score distribution (commonly used in reward mode)
         scores = list(self.judge_scores.values())
         if any(s != 0.0 for s in scores):
             print(f"[Score Distribution] min={min(scores):.2f} max={max(scores):.2f} "
@@ -279,9 +283,9 @@ class FineFS(Dataset):
         # Reshape to (T, V, 3) for geometry operations
         joint_data = pose_flat.reshape(pose_flat.shape[0], NUM_JOINTS, 3)   # (T, V, 3)
 
-        # -------- random_face: 沿 Y 軸隨機旋轉 --------
-        # 在 bone 計算之前做，確保 bone vector 與 joint 一致旋轉。
-        # val / test 不做，保證可重複性。
+        # -------- random_face: random rotation about the Y axis --------
+        # Done before the bone computation, to keep bone vectors and joints
+        # rotated consistently. Skipped for val/test to ensure reproducibility.
         if self.random_face:
             joint_data = random_rotate_y(joint_data)
         # -----------------------------------------------
@@ -290,7 +294,7 @@ class FineFS(Dataset):
         score = self.judge_scores[key]
 
         if self.reward_mode:
-            # ---- Reward Model 格式 ----
+            # ---- Reward Model format ----
             # joint: (3, T, V),  bone: (3, T, V)  →  x: (6, T, V)
             joint = torch.tensor(joint_data, dtype=torch.float32).permute(2, 0, 1)  # (3, T, V)
             bone  = torch.zeros_like(joint)
@@ -303,7 +307,7 @@ class FineFS(Dataset):
                 "judge_score" : torch.tensor(score, dtype=torch.float32),
             }
         else:
-            # ---- 主模型 (DePOSit) 格式 ----
+            # ---- Main model (DePOSit) format ----
             pose_out = joint_data.reshape(self.seq_len, -1)   # (T, V*3)  ← keep as ndarray
             mask     = build_mask(self.in_n, self.out_n, pose_out.shape[1])
             return {
@@ -311,13 +315,13 @@ class FineFS(Dataset):
                 "mask"        : mask[:, self.dim_used],
                 "timepoints"  : np.arange(self.seq_len),
                 "motion_name" : label,
-                "judge_score" : score,  # float, 主模型通常不用
+                "judge_score" : score,  # float, usually unused by the main model
             }
 
 
 # ---------------- Quick CLI test ---------------- #
 if __name__ == "__main__":
-    # 主模型格式
+    # Main model format
     ds = FineFS(
         data_dir    = "/home/allen/datasets/FineFS_5s/3_final",
         input_n     = 30,
@@ -332,7 +336,7 @@ if __name__ == "__main__":
     )
     print("Main model sample keys:", list(ds[0].keys()))
 
-    # Reward model 格式
+    # Reward model format
     ds_r = FineFS(
         data_dir    = "/home/allen/datasets/FineFS_5s/3_final",
         input_n     = 30,

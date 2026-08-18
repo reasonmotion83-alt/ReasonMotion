@@ -3,10 +3,10 @@ defaults:
   - model: sft_baseline
   - _self_
 
-# 快速測試開關 (若為 true，則所有資料集只取 1% 的資料量)
+# Quick-test switch (if true, only 1% of every dataset is used)
 quick_test: false
 
-# 訓練迴圈超參數
+# Training loop hyperparameters
 training:
   epochs: 500
   batch_size: 32
@@ -14,22 +14,22 @@ training:
   lr: 1.0e-3
   valid_epoch_interval: 10
   grad_clip: 1.0
-  cfg_dropout_prob: 0.05    # SFT 期間將文字 Embedding 歸零的機率，用來提升 CFG 的 Robustness
-  gen_type: "ddpm"          # 底層生成模型架構: 'ddpm' (Diffusion) 或 'flow_matching'
-  save_top_k: -1            # 儲存 Checkpoint 的數量限制 (-1 代表儲存全部，方便觀察流變)
+  cfg_dropout_prob: 0.05    # Probability of zeroing out the text embedding during SFT, used to improve CFG robustness
+  gen_type: "ddpm"          # Underlying generative model architecture: 'ddpm' (Diffusion) or 'flow_matching'
+  save_top_k: -1            # Limit on the number of checkpoints to save (-1 means save all, for tracking training dynamics)
 
-# PyTorch Lightning 系統設定
+# PyTorch Lightning system settings
 system:
   accelerator: "gpu"
-  devices: [1,2]            # 使用所有可用 GPU
+  devices: [1,2]            # Use all available GPUs
   strategy: "ddp"
-  precision: "32-true"   # 支援 16-mixed 以節省顯存
+  precision: "32-true"   # Supports 16-mixed to save GPU memory
   seed: 42
 
-# 定義實驗名稱標籤，方便隨時覆寫 (例如 python train.py exp_name=sft+moe)
+# Define an experiment name tag, easily overridable (e.g. python train.py exp_name=sft+moe)
 exp_name: "sft"
 
-# 覆寫 Hydra 預設的輸出目錄命名規則
+# Override Hydra's default output directory naming scheme
 hydra:
   run:
     dir: outputs/${exp_name}_${dataset.name}_${now:%Y-%m-%d_%H-%M}

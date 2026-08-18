@@ -7,10 +7,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 import random
-#將/home/allen/Diffusion/ReasonMotion_SFT_GRPO加至系統路徑
+# Add /home/allen/Diffusion/ReasonMotion_SFT_GRPO to the system path
 import sys
 sys.path.append("/home/allen/Diffusion/ReasonMotion_SFT_GRPO_Trajectory")
-from utils.finefs import FineFS                                       # 統一 dataset
+from utils.finefs import FineFS                                       # unified dataset
 from utils.fs_reward_utils.fs_reward_model import HumanPosePerception, CoachScoringModel
 
 '''

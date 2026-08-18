@@ -211,9 +211,9 @@ class BoxingDataset(Dataset):
 
     def _compute_5level_score(self, act_main: str, act_opp: str, main_pose: np.ndarray, opp_pose: np.ndarray) -> float:
         """
-        攻擊動態與對手反應結合之 5 階評分 [-2.0, +2.0]：
-        main_pose / opp_pose shape: (T, 25, 3)，已相對於各自 Pelvis (Joint 8) 對齊
-        Body25 Keypoint 索引:
+        5-level score [-2.0, +2.0] combining attack dynamics with the opponent's reaction:
+        main_pose / opp_pose shape: (T, 25, 3), already aligned relative to each figure's own Pelvis (Joint 8)
+        Body25 Keypoint indices:
             0: Head / Nose,  1: Neck,  8: Pelvis (Root, 0,0,0)
             2: Right Shoulder, 3: Right Elbow, 4: Right Wrist
             5: Left Shoulder,  6: Left Elbow,  7: Left Wrist
@@ -221,33 +221,33 @@ class BoxingDataset(Dataset):
         is_main_punch = (act_main != 'neutral')
         is_opp_punch  = (act_opp != 'neutral')
 
-        # 1. 計算主角擊打手 (Wrist 4/7) 相對同側肩膀 (Shoulder 2/5) 的最大手臂延伸距離 (Reach)
+        # 1. Compute the main figure's striking-arm (Wrist 4/7) maximum extension distance (Reach) relative to the same-side shoulder (Shoulder 2/5)
         r_wrist_reach = np.linalg.norm(main_pose[:, 4] - main_pose[:, 2], axis=-1)  # Right arm
         l_wrist_reach = np.linalg.norm(main_pose[:, 7] - main_pose[:, 5], axis=-1)  # Left arm
-        max_reach = np.max(np.maximum(r_wrist_reach, l_wrist_reach))  # 全序列最大出拳伸展距離 (公尺)
+        max_reach = np.max(np.maximum(r_wrist_reach, l_wrist_reach))  # max punch extension distance over the whole sequence (meters)
 
-        # 2. 計算對手頭部/軀幹 (Joint 0) 在預測視窗內的後退/避讓位移 (Opponent Disruption)
+        # 2. Compute the opponent's head/torso (Joint 0) retreat/evasion displacement (Opponent Disruption) within the prediction window
         opp_head = opp_pose[self.in_n:, 0]  # (out_n, 3)
         head_disp = np.max(np.linalg.norm(opp_head - opp_head[0], axis=-1))
 
         if is_main_punch and is_opp_punch:
-            # Level 1 (-2.0): Countered / Vulnerable (雙方同時出拳，暴露出拳破綻)
-            return -2.0  
+            # Level 1 (-2.0): Countered / Vulnerable (both sides punch simultaneously, exposing an opening)
+            return -2.0
         elif is_main_punch and not is_opp_punch:
             if max_reach < 0.38:
-                # Level 2 (-1.0): Hesitant / Weak Punch (Prompt 為出拳但手臂未充分延伸，如僅深蹲防守或縮手)
+                # Level 2 (-1.0): Hesitant / Weak Punch (prompt is a punch but the arm isn't fully extended, e.g. only a defensive crouch or a withdrawn arm)
                 return -1.0
             elif head_disp > 0.12 and max_reach >= 0.45:
-                # Level 5 (+2.0): Dominant Heavy Punch (高質量充分出拳延伸 且 迫使對手壓制後退/閃避)
-                return 2.0   
+                # Level 5 (+2.0): Dominant Heavy Punch (high-quality, fully extended punch that also forces the opponent to retreat/evade)
+                return 2.0
             else:
-                # Level 4 (+1.0): Clean Effective Punch (乾淨標準出拳延伸)
-                return 1.0   
+                # Level 4 (+1.0): Clean Effective Punch (clean, standard punch extension)
+                return 1.0
         elif not is_main_punch and is_opp_punch:
-            # Level 2 (-1.0): Passive (主角未攻擊且陷入被動)
-            return -1.0  
+            # Level 2 (-1.0): Passive (main figure does not attack and falls into a passive state)
+            return -1.0
         else:
-            # Level 3 (0.0): Standard Neutral (標準試探姿態)
+            # Level 3 (0.0): Standard Neutral (standard probing stance)
             return 0.0
 
 

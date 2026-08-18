@@ -1,6 +1,6 @@
 # utils/h36m.py
 """
-資料夾結構
+Folder structure
 root/                       ← data_dir
 └── h3.6m/dataset/
     └── S1/
@@ -18,9 +18,9 @@ from torch.utils.data import Dataset
 
 from utils import data_utils    
 
-# ------------- 共用工具 ------------- #
+# ------------- Shared utilities ------------- #
 def build_mask(in_n: int, out_n: int, dim: int) -> np.ndarray:
-    """與 FineFS 相同：前 in_n 幀 = 1，其餘 0。"""
+    """Same as FineFS: first in_n frames = 1, the rest = 0."""
     m = np.zeros((in_n + out_n, dim), dtype=np.float32)
     m[:in_n] = 1
     return m
@@ -31,16 +31,16 @@ class H36M(Dataset):
     Args
     ----
     data_dir   : str,   e.g. "/home/allen/datasets"
-    input_n    : int,   長度同 FineFS
+    input_n    : int,   length, same convention as FineFS
     output_n   : int
     skip_rate  : int,   sliding window stride (ignored if no_overlap=True)
     split      : int,   0=train, 1=valid, 2=test
     actions    : list[str] or None
     joints     : int,   24 / 22 / 17 / 32
-    data_ratio : 0~1,   只取部分資料做快速實驗
-    downsample : int,   原始序列下采樣 (預設 2)
-    max_len    : int or None, 序列長度上限
-    no_overlap : bool,  若 True，每個影片只用一次 (從頭開始)；若 False，使用 sliding window
+    data_ratio : 0~1,   use only a subset of the data for quick experiments
+    downsample : int,   downsampling factor for the raw sequence (default 2)
+    max_len    : int or None, upper bound on sequence length
+    no_overlap : bool,  if True, use each video only once (starting from the beginning); if False, use sliding windows
     """
     def __init__(self,
                  data_dir     : str,
@@ -58,7 +58,7 @@ class H36M(Dataset):
         assert 0 < data_ratio <= 1
         assert split in [0, 1, 2]
 
-        # ---------- 基本設定 ---------- #
+        # ---------- Basic setup ---------- #
         self.seq_len   = input_n + output_n
         self.in_n      = input_n
         self.out_n     = output_n
@@ -67,23 +67,23 @@ class H36M(Dataset):
         self.split     = split
         self.no_overlap= no_overlap
 
-        # ---------- 關節維度挑選 ---------- #
-        if joints == 24:          # 與 FineFS 對齊 (HybrIK-24 skeleton)
+        # ---------- Joint dimension selection ---------- #
+        if joints == 24:          # aligned with FineFS (HybrIK-24 skeleton)
             self.dim_used = np.arange(24 * 3)
-        elif joints == 22:        # 與 DePOSit 原版一致
+        elif joints == 22:        # consistent with the original DePOSit
             self.dim_used = np.array(
                 [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25,
                  26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44,
                  45, 46, 47, 51, 52, 53, 54, 55, 56, 57, 58, 59, 63, 64, 65, 66,
                  67, 68, 75, 76, 77, 78, 79, 80, 81, 82, 83, 87, 88, 89, 90, 91,
                  92])
-        elif joints == 17:        # 常見 17-joint subset
+        elif joints == 17:        # common 17-joint subset
             self.dim_used = np.array(
                 [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 18, 19, 20, 21, 22, 23,
                  24, 25, 26, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 51,
                  52, 53, 54, 55, 56, 57, 58, 59, 75, 76, 77, 78, 79, 80, 81, 82,
                  83])
-        else:                     # 32 關節全保留
+        else:                     # keep all 32 joints
             self.dim_used = np.arange(96)
 
         # ---------- subjects split ---------- #
@@ -94,25 +94,25 @@ class H36M(Dataset):
                              "takingphoto", "waiting", "walkingdog",
                              "walkingtogether"]
 
-        # ---------- 路徑 ---------- #
+        # ---------- Path ---------- #
         base_dir = os.path.join(data_dir, "h3.6m/h3.6m/dataset")
         if not os.path.isdir(base_dir):
             raise FileNotFoundError(f"H36M folder not found: {base_dir}")
         print(f"[Init] H36M base: {base_dir}")
         print("downsample:", downsample)
         print("out_n:", self.out_n)
-        # ----------- 讀取序列 ----------- #
+        # ----------- Load sequences ----------- #
         self.p3d: Dict[int, np.ndarray] = {}
         self.motion_labels: Dict[int, str] = {}
         self.data_idx: List[Tuple[int, int]] = []
 
         key        = 0
         total_win  = 0
-        sample_max = None  # 若要限制樣本數，可自行設定
+        sample_max = None  # set this to limit the number of samples if needed
 
         for subj in subs:
             for act in acts:
-                for subact in ([1, 2] if split <= 1 else [1]):  # test split 讀雙檔
+                for subact in ([1, 2] if split <= 1 else [1]):  # test split reads both files
                     fname = f"S{subj}/{act}_{subact}.txt"
                     fpath = os.path.join(base_dir, fname)
                     if not os.path.exists(fpath):
@@ -128,7 +128,7 @@ class H36M(Dataset):
                         seq = np.concatenate([seq, np.repeat(seq[-1:], pad, axis=0)], 0)
 
                     seq = torch.from_numpy(seq).float()
-                    seq[:, 0:6] = 0           # 清除 global rot / trans
+                    seq[:, 0:6] = 0           # zero out global rot / trans
                     xyz = data_utils.expmap2xyz_torch(seq).view(seq.shape[0], -1).cpu().numpy()
 
                     self.p3d[key] = xyz
@@ -136,7 +136,7 @@ class H36M(Dataset):
 
                     # ---------- sliding windows ---------- #
                     if no_overlap:
-                        starts = [0]  # 每個影片只取開頭
+                        starts = [0]  # take only the start of each video
                     else:
                         starts = np.arange(0, xyz.shape[0] - self.seq_len + 1, skip_rate)
                     self.data_idx.extend([(key, s) for s in starts])
@@ -156,7 +156,7 @@ class H36M(Dataset):
 
         print(f"[Summary] sequences: {len(self.motion_labels)} | windows: {len(self.data_idx)}")
 
-    # ---------- 標準函式 ---------- #
+    # ---------- Standard methods ---------- #
     def __len__(self):
         return len(self.data_idx)
 
@@ -170,20 +170,20 @@ class H36M(Dataset):
             "mask"       : mask[:, self.dim_used],
             "timepoints" : np.arange(self.seq_len),
             "motion_name": self.motion_labels[key],                 # e.g. "walking"
-            "judge_score": 0.0,                                     # 佔位
+            "judge_score": 0.0,                                     # placeholder
         }
 # ------------- Skeleton Edge (for H36M) ------------- #
-# 32 關節版本 (full)；22/17 只會畫到已有的頂點 index
+# 32-joint version (full); 22/17 only draws edges among the joints that exist
 EDGES_H36M = [
-    (0, 1), (1, 2), (2, 3),        # 右腿：hip → rhip → rknee → rfoot
-    (0, 4), (4, 5), (5, 6),        # 左腿：hip → lhip → lknee → lfoot
+    (0, 1), (1, 2), (2, 3),        # right leg: hip → rhip → rknee → rfoot
+    (0, 4), (4, 5), (5, 6),        # left leg: hip → lhip → lknee → lfoot
     (0, 7), (7, 8), (8, 9), (9,10),# spine → thorax → neck → head
-    (8,11), (11,12), (12,13),     # 左手：thorax → lshoulder → lelbow → lwrist
-    (8,14), (14,15), (15,16)      # 右手：thorax → rshoulder → relbow → rwrist
+    (8,11), (11,12), (12,13),     # left arm: thorax → lshoulder → lelbow → lwrist
+    (8,14), (14,15), (15,16)      # right arm: thorax → rshoulder → relbow → rwrist
 ]
 
 
-# ------------- 可視化函式 ------------- #
+# ------------- Visualization functions ------------- #
 def visualize_sequence(pose: np.ndarray,
                        edges : List[Tuple[int,int]],
                        save_path: Optional[str] = None,
@@ -215,7 +215,7 @@ def visualize_sequence(pose: np.ndarray,
 
         scat._offsets3d = (pts[:, 0], pts[:, 1], pts[:, 2])
         for k, (i, j) in enumerate(edges):
-            if i >= J or j >= J:         # 22/17 joints 情況
+            if i >= J or j >= J:         # 22/17 joints case
                 lines[k].set_data([], [])
                 lines[k].set_3d_properties([])
                 continue

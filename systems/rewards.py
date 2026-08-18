@@ -13,7 +13,7 @@ class UnifiedRewardModel(nn.Module):
             self.w_score = float(config['rl'].get('w_score', 0.0))
             self.fs_ckpt = config['rl'].get('fs_reward_ckpt', None)
             
-            # 讀取 dataset 的 input_n，若無則預設為 0
+            # Read input_n from the dataset config; default to 0 if absent
             self.input_n = int(config.get('dataset', {}).get('input_n', 0))
             self.smooth_floor = float(config['rl'].get('smooth_floor', 0.0))
             self.smooth_floor_penalty = float(config['rl'].get('smooth_floor_penalty', 0.0))
@@ -117,7 +117,7 @@ class UnifiedRewardModel(nn.Module):
         return (reward_smooth, acc_mag) if return_acc else reward_smooth
 
     def compute_score_reward(self, samples):
-        """計算動作分數"""
+        """Compute the motion score"""
         if self.fs_model is None:
             return torch.zeros(samples.shape[0], samples.shape[1], device=self.device)
 

@@ -48,7 +48,7 @@ class GRPOSystem(pl.LightningModule):
 
         cfg_dict = OmegaConf.to_container(config, resolve=True)
         
-        # 根據 gen_type 或 model.name 切換底層生成架構
+        # Switch the underlying generative architecture based on gen_type or model.name
         gen_type = config.get("training", {}).get("gen_type", "ddpm")
         model_name = config.get("model", {}).get("name", "sft_baseline")
         if gen_type == "flow_matching" or model_name == "flow_matching":
@@ -86,7 +86,7 @@ class GRPOSystem(pl.LightningModule):
         self.ref_model.load_state_dict(self.model.state_dict())
         self.old_model.load_state_dict(self.model.state_dict())
         
-        # 這裡的 reward_model 需要正確分配到對應的 GPU
+        # The reward_model here needs to be correctly assigned to the corresponding GPU
         self.reward_model.device = self.device
         if hasattr(self.reward_model, 'fs_model') and self.reward_model.fs_model is not None:
             self.reward_model.fs_model.to(self.device)
@@ -110,12 +110,12 @@ class GRPOSystem(pl.LightningModule):
             self.visualizer.load_fixed_sample(val_dataset)
 
     def _get_active_timesteps(self):
-        """決定當前 Batch 應該更新哪些時間步 (t)"""
+        """Determine which timesteps (t) the current Batch should update"""
         if not self.delayed_enabled:
             return None # None means all steps are active
-            
-        # ⭐️ 核心安全機制：使用當前 global_step 作為隨機種子，確保所有 Rank 抽到一模一樣的時間步！
-        # 這樣就不會因為隨機狀態分歧而在 DDP backward 中發生死結。
+
+        # ⭐️ Core safety mechanism: use the current global_step as the random seed, ensuring every Rank draws exactly the same timesteps!
+        # This way, divergent random states can't cause a deadlock during DDP backward.
         state = random.getstate()
         random.seed(self.global_step + 99999)
             
@@ -125,7 +125,7 @@ class GRPOSystem(pl.LightningModule):
             # t in (t_start - window_size, t_start]
             active = list(range(t_start - self.window_size + 1, t_start + 1))
         elif self.sampling_mode == "discrete":
-            # 隨機抽取 num_discrete_steps 步
+            # Randomly draw num_discrete_steps steps
             steps = random.sample(range(1, num_steps), self.num_discrete_steps)
             active = steps
         else:
@@ -189,7 +189,7 @@ class GRPOSystem(pl.LightningModule):
             kl_div = approx_kl.mean().item()
 
         # 5. PPO Updates
-        self.model.eval() # 保持 eval 模式以避免去噪過程中的 dropout 導致機率估計不一致，從而穩定 KL 與梯度
+        self.model.eval() # Keep eval mode to avoid dropout during denoising causing inconsistent probability estimates, thereby stabilizing KL and gradients
         for ppo_epoch in range(self.ppo_epochs):
             opt.zero_grad()
             self.model.backprop_trajectory_loss(
@@ -254,7 +254,7 @@ class GRPOSystem(pl.LightningModule):
             min_std = anneal_cfg.get("min_std", 0.005)
             decay = anneal_cfg.get("decay_rate", 0.95)
             self.sampling_std = max(min_std, self.sampling_std * decay)
-            # 同步更新底層 model 的 sampling_std
+            # Sync the sampling_std update to the underlying models
             self.model.sampling_std = self.sampling_std
             self.old_model.sampling_std = self.sampling_std
             self.ref_model.sampling_std = self.sampling_std
@@ -325,7 +325,7 @@ class GRPOSystem(pl.LightningModule):
 
     def train(self, mode: bool = True):
         super().train(mode)
-        # 強制這些靜態/凍結/參考子模型永遠保持在 eval 模式
+        # Force these static/frozen/reference sub-models to always stay in eval mode
         if hasattr(self, "reward_model") and self.reward_model is not None:
             self.reward_model.eval()
         if hasattr(self, "text_encoder") and self.text_encoder is not None:

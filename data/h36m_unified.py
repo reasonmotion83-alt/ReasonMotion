@@ -271,13 +271,13 @@ class H36MUnified(Dataset):
         return _build_nomiss_mask(self.in_n, self.out_n, pose.shape[1])
 
     def __getitem__(self, idx) -> Dict[str, Any]:
-        """回傳單筆資料字典，包含：
-        - pose: (seq_len, len(dim_used))，單位為公尺且只保留使用維度。
-        - pose_32: (seq_len, full_dim)，原始 32 joints 姿態（毫米）。
-        - mask: (seq_len, len(dim_used))，對應 pose 的觀測遮罩。
-        - timepoints: (seq_len,) 時間索引 [0, ..., seq_len-1]。
-        - motion_name: 該序列的動作名稱（若無標籤則為 "unknown"）。
-        - judge_score: 預設評分（float，固定 0.0）。
+        """Returns a single sample dict, containing:
+        - pose: (seq_len, len(dim_used)), in meters, keeping only the used dimensions.
+        - pose_32: (seq_len, full_dim), the original 32-joint pose (millimeters).
+        - mask: (seq_len, len(dim_used)), the observation mask corresponding to pose.
+        - timepoints: (seq_len,) time indices [0, ..., seq_len-1].
+        - motion_name: the motion name for this sequence (or "unknown" if unlabeled).
+        - judge_score: default score (float, fixed at 0.0).
         """
         key, start_frame = self.data_idx[idx]
         fs = np.arange(start_frame, start_frame + self.seq_len)

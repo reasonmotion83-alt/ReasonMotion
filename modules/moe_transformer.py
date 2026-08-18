@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MoE Transformer Implementation - 繼承 nn.TransformerEncoderLayer 並修改 _ff_block 為 MoE
+MoE Transformer Implementation - inherits from nn.TransformerEncoderLayer and modifies _ff_block into MoE
 """
 import torch
 import torch.nn as nn
@@ -286,12 +286,12 @@ class QwenStyleSparseMoEBlock(nn.Module):
 class QwenStyleSparseMoEBlock_RL(QwenStyleSparseMoEBlock):
     """R3 (Rollout Routing Replay) variant of QwenStyleSparseMoEBlock.
 
-    與 FairscaleMoEBlock_RL 相同的 R3 機制，但基於 Qwen-style routing：
-      - 推理時使用標準 top-k softmax
-      - 訓練 replay 時使用 **masked softmax**：只在 I_infer 選中的
-        experts 上歸一化，保留梯度流回 router
+    Same R3 mechanism as FairscaleMoEBlock_RL, but based on Qwen-style routing:
+      - Uses standard top-k softmax during inference
+      - Uses **masked softmax** during training replay: normalizes only over the
+        experts selected by I_infer, preserving gradient flow back to the router
 
-    計算流程（R3 mode）：
+    Computation flow (R3 mode):
       1. s_train = x_train @ W_r           (router logits)
       2. I_infer = inference recorded mask  (top-k expert indices)
       3. g_replay_i = I_infer_i * exp(s_train_i)
@@ -299,7 +299,7 @@ class QwenStyleSparseMoEBlock_RL(QwenStyleSparseMoEBlock):
          → masked softmax over selected experts
       4. y_replay = sum_i g_replay_i * E_i(x_train)
 
-    使用方式同 FairscaleMoEBlock_RL（策略 C — Detached Single-Step）。
+    Used the same way as FairscaleMoEBlock_RL (Strategy C — Detached Single-Step).
     """
 
     def __init__(self, *args, **kwargs):
@@ -310,15 +310,15 @@ class QwenStyleSparseMoEBlock_RL(QwenStyleSparseMoEBlock):
         self._last_routing_weights: Optional[torch.Tensor] = None
 
     def set_pending_routing(self, selected_experts: torch.Tensor):
-        """設定下次 forward 要 replay 的路由。
+        """Set the routing to replay on the next forward.
 
         Args:
-            selected_experts: (N, top_k) int64 tensor，detached。
+            selected_experts: (N, top_k) int64 tensor, detached.
         """
         self._pending_routing = selected_experts
 
     def clear_pending_routing(self):
-        """清除待用路由（安全用，forward 後也會自動清）。"""
+        """Clear the pending routing (for safety; also cleared automatically after forward)."""
         self._pending_routing = None
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -692,25 +692,27 @@ class FairscaleMoEBlock(nn.Module):
 class FairscaleMoEBlock_RL(FairscaleMoEBlock):
     """R3 (Rollout Routing Replay) variant of FairscaleMoEBlock.
 
-    核心改動：訓練時專家選擇不再由當前 logits 動態決定，
-    而是固定使用推理階段記錄的路由掩碼 ``I_infer``。
-    門控權重則對訓練時的 logits 做 **masked softmax**，
-    只在 ``I_infer`` 選中的專家上歸一化，因此梯度仍可流回 router。
+    Core change: expert selection during training is no longer dynamically decided
+    by the current logits, but instead fixed to the routing mask ``I_infer``
+    recorded during the inference phase.
+    The gating weights then apply **masked softmax** on the training-time logits,
+    normalizing only over the experts selected by ``I_infer``, so gradients can
+    still flow back to the router.
 
-    計算流程：
-      1. s_train = x_train @ W_r           (router logits，不變)
-      2. I_infer = inference recorded mask  (專家選擇，來自推理)
+    Computation flow:
+      1. s_train = x_train @ W_r           (router logits, unchanged)
+      2. I_infer = inference recorded mask  (expert selection, from inference)
       3. g_replay_i = I_infer_i * exp(s_train_i)
                       / sum_j I_infer_j * exp(s_train_j)
          → masked softmax over selected experts
       4. y_replay = sum_i g_replay_i * E_i(x_train)
 
-    使用方式（策略 C — Detached Single-Step）：
-      1. 外部先呼叫 ``model.diffmodel(...)`` (no_grad) 一次
-         → 所有 block 的 ``_last_selected_experts`` 被記錄
-      2. 呼叫 ``block.set_pending_routing(selected_experts)``
-      3. 再次 ``model.diffmodel(...)`` (有 grad)
-         → block 自動消費 ``_pending_routing``，以 R3 模式 forward
+    Usage (Strategy C — Detached Single-Step):
+      1. Externally call ``model.diffmodel(...)`` once (no_grad)
+         → every block's ``_last_selected_experts`` gets recorded
+      2. Call ``block.set_pending_routing(selected_experts)``
+      3. Call ``model.diffmodel(...)`` again (with grad)
+         → the block automatically consumes ``_pending_routing`` and forwards in R3 mode
     """
 
     def __init__(self, *args, **kwargs):
@@ -718,15 +720,15 @@ class FairscaleMoEBlock_RL(FairscaleMoEBlock):
         self._pending_routing: Optional[torch.Tensor] = None
 
     def set_pending_routing(self, selected_experts: torch.Tensor):
-        """設定下次 forward 要 replay 的路由。
+        """Set the routing to replay on the next forward.
 
         Args:
-            selected_experts: (N, 2) int64 tensor，detached。
+            selected_experts: (N, 2) int64 tensor, detached.
         """
         self._pending_routing = selected_experts
 
     def clear_pending_routing(self):
-        """清除待用路由（安全用，forward 後也會自動清）。"""
+        """Clear the pending routing (for safety; also cleared automatically after forward)."""
         self._pending_routing = None
 
     def forward(
@@ -760,7 +762,7 @@ class FairscaleMoEBlock_RL(FairscaleMoEBlock):
             # ============================================================
             _, selected_experts_infer = external_routing  # (N, 2)
 
-            # Step 1 — Router logits from training input (梯度來源)
+            # Step 1 — Router logits from training input (gradient source)
             logits = self.gate(x)  # (N, E)
 
             # Step 2 — Expert selection fixed from inference

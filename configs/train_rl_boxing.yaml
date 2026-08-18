@@ -2,12 +2,12 @@ defaults:
   - dataset: boxing
   - _self_
 
-sft_dir: "" # 必須由命令列提供，例如 python train_rl.py --config-name=train_rl_boxing sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
+sft_dir: "" # Must be provided on the command line, e.g. python train_rl.py --config-name=train_rl_boxing sft_dir=outputs/YYYY-MM-DD_HH-MM-SS
 sft_ckpt: null
 
 quick_test: false
 
-# 覆蓋 SFT 階段的訓練參數
+# Override training parameters from the SFT stage
 training:
   lr: 5e-6
   epochs: 50
@@ -20,7 +20,7 @@ training:
   log_every_n_steps: 10
   limit_val_batches: 5
 
-# RL 專屬設定
+# RL-specific settings
 rl:
   lr_schedule:
     type: step
@@ -33,7 +33,7 @@ rl:
   num_samples_per_prompt: 8
   sampling_std: 1.0
   
-  # Reward 權重
+  # Reward weights
   w_gt: 0.65
   w_smooth: 0.1
   w_score: 0.25
@@ -75,7 +75,7 @@ rl:
       enabled: false
       ratio: 0.5
 
-# PyTorch Lightning 系統設定
+# PyTorch Lightning system settings
 system:
   accelerator: "gpu"
   devices: [0]
