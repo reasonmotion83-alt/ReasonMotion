@@ -2,7 +2,6 @@
 
 # ReasonMotion: Language-Guided Editing and Reward-Guided Prediction for Sports Coaching
 
-**NeurIPS 2026 Submission (Double-Blind Anonymous Review)**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
