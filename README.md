@@ -29,9 +29,9 @@ Language-guided human motion modeling has advanced rapidly, but **sports coachin
 
 | Demonstration | Video Preview / Link | Key Features |
 | :--- | :--- | :--- |
-| **Instruction-Grounded Motion Editing** | 🎬 [Watch `motion_editing_exmple.mp4`](videos/motion_editing_exmple.mp4) | Demonstrates fine-grained technical pose adjustments driven by language prompts while preserving biomechanical continuity. |
-| **Boxing Coaching Adaptation** | 🎬 [Watch `boxing_example.mp4`](videos/boxing_example.mp4) | Multi-view sports motion modeling showcasing upper-body dynamic strikes and balance preservation. |
-| **Trajectory Overlap Analysis** | 🎬 [Watch `overlap_rl_gt_3A_0057.mp4`](videos/cross_model_comparison/overlap_rl_gt_3A_0057.mp4) | Direct 3D skeleton overlap comparison between ReasonMotion RL predictions and Ground Truth (GT) jump takeoffs. |
+| **Instruction-Grounded Motion Editing** | 🎬 [Watch `motion_editing_exmple.mp4`](videos/motion_editing_exmple.mp4) ![demo](videos/gif/motion_editing_exmple.gif) | Demonstrates fine-grained technical pose adjustments driven by language prompts while preserving biomechanical continuity. |
+| **Boxing Coaching Adaptation** | 🎬 [Watch `boxing_example.mp4`](videos/boxing_example.mp4) ![demo](videos/gif/boxing_example.gif) | Multi-view sports motion modeling showcasing upper-body dynamic strikes and balance preservation. |
+| **Trajectory Overlap Analysis** | 🎬 [Watch `overlap_rl_gt_3A_0057.mp4`](videos/cross_model_comparison/overlap_rl_gt_3A_0057.mp4) ![demo](videos/gif/overlap_rl_gt_3A_0057.gif) | Direct 3D skeleton overlap comparison between ReasonMotion RL predictions and Ground Truth (GT) jump takeoffs. |
 
 ### 🔬 Cross-Model Baseline Comparison (`videos/cross_model_comparison/`)
 
@@ -39,10 +39,10 @@ We compare ReasonMotion against leading motion generation baselines under identi
 
 | Model | Video Render Link | Motion Characteristics |
 | :--- | :--- | :--- |
-| **ReasonMotion (Ours)** | 🎬 [`strobe_render_ReasonMotion_rl.mp4`](videos/cross_model_comparison/strobe_render_ReasonMotion_rl.mp4) | **Optimal rotation speed & tuck form**, maintaining biomechanical alignment and high execution quality. |
-| **Ground Truth (GT)** | 🎬 [`strobe_render_gt.mp4`](videos/cross_model_comparison/strobe_render_gt.mp4) | Reference execution trajectory from professional skating athlete dataset. |
-| **CoMusion Baseline** | 🎬 [`strobe_render_CoMusion.mp4`](videos/cross_model_comparison/strobe_render_CoMusion.mp4) | Over-smooth trajectory; lacks fine-grained rotation acceleration during jump phase. |
-| **TransFusion Baseline** | 🎬 [`strobe_render_TransFusion.mp4`](videos/cross_model_comparison/strobe_render_TransFusion.mp4) | High jitter near terminal frames with joint dislocation under rapid rotational momentum. |
+| **ReasonMotion (Ours)** | 🎬 [`strobe_render_ReasonMotion_rl.mp4`](videos/cross_model_comparison/strobe_render_ReasonMotion_rl.mp4) ![demo](videos/gif/strobe_render_ReasonMotion_rl.gif) | **Optimal rotation speed & tuck form**, maintaining biomechanical alignment and high execution quality. |
+| **Ground Truth (GT)** | 🎬 [`strobe_render_gt.mp4`](videos/cross_model_comparison/strobe_render_gt.mp4) ![demo](videos/gif/strobe_render_gt.gif) | Reference execution trajectory from professional skating athlete dataset. |
+| **CoMusion Baseline** | 🎬 [`strobe_render_CoMusion.mp4`](videos/cross_model_comparison/strobe_render_CoMusion.mp4) ![demo](videos/gif/strobe_render_CoMusion.gif) | Over-smooth trajectory; lacks fine-grained rotation acceleration during jump phase. |
+| **TransFusion Baseline** | 🎬 [`strobe_render_TransFusion.mp4`](videos/cross_model_comparison/strobe_render_TransFusion.mp4) ![demo](videos/gif/strobe_render_TransFusion.gif) | High jitter near terminal frames with joint dislocation under rapid rotational momentum. |
 
 *If viewing directly on GitHub, click the links above to stream MP4 videos directly in your browser player.*
 
