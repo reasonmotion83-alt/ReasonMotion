@@ -147,9 +147,3 @@ python scripts/visualize.py \
   --mode infer \
   --motion ./data/FineFS_5s/3_final/valid/4F/4F_0011/new_res.pk
 ```
-
----
-
-## 🛡️ Anonymous Review Notice
-
-This repository is submitted anonymously in compliance with the **NeurIPS 2026 Double-Blind Review Policy**. All author identities, affiliations, and personal directory paths have been removed.
